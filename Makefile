@@ -61,7 +61,7 @@ endif
 CXXFLAGS += -fstack-protector
 CXXFLAGS += -D_FORTIFY_SOURCE=2
 CXXFLAGS += -Wformat -Wformat-security
-CXXFLAGS += -fPIE
+#CXXFLAGS += -fPIE
 
 # We must force GCC to never assume that it can shove in its own
 # sse2/sse3 versions of strlen and strcmp because they will CRASH.
@@ -69,7 +69,7 @@ CXXFLAGS += -fPIE
 CXXFLAGS += -fPIC
 
 # Compiler
-CXX := ${HOME}/intel/oneapi/compiler/latest/linux/bin/icpx #g++
+CXX := ${HOME}/intel/oneapi/compiler/latest/linux/bin/icpx #g++#
 
 # Target
 TARGET := libnetFPGA.a
@@ -80,20 +80,22 @@ INC_DIRS := ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/inc ./include ./d
 LIB_DIRS := 
 
 # Files
-INCS := $(wildcard include/*.h def/*.h)
+INCS := $(wildcard )
 SRCS := $(wildcard src/*.cpp ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/src/AOCLUtils/*.cpp)
 LIBS := rt pthread
-OBJ := netFPGA.o
+OBJ_COMPILE :=  netFPGA.o#$(patsubst %.cpp,%.o,$(SRCS))#$(SRCS:.cpp=.o)
+OTHERS_OBJ := opencl.o options.o
+$(info    OBJ is $(OBJ_COMPILE))
 
 # Make it all!
 all : $(TARGET_DIR)/$(TARGET)
 
 # OBJ = $(SRCS: .cpp=.o)
-$(TARGET_DIR)/$(TARGET) : $(OBJ)
-	ar rcs $(TARGET_DIR)/$(TARGET) $(OBJ)
+$(TARGET_DIR)/$(TARGET) : $(OBJ_COMPILE) $(OTHERS_OBJ)
+	ar rcs $(TARGET_DIR)/$(TARGET) $(OBJ_COMPILE) $(OTHERS_OBJ)
 
 # Host executable target.
-$(OBJ) : $(SRCS) $(INCS) $(TARGET_DIR)
+$(OBJ_COMPILE) : $(SRCS) $(INCS) $(TARGET_DIR)
 	$(ECHO)$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(EXTRACXXFLAGS) -fPIC $(foreach D,$(INC_DIRS),-I$D) \
 			$(AOCL_COMPILE_CONFIG) -c $(SRCS) $(AOCL_LINK_CONFIG) \
 			$(foreach D,$(LIB_DIRS),-L$D) \

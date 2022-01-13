@@ -98,6 +98,7 @@ namespace fpga
                 }
             }
         }
+        //cout << "FPGA NET: CREATED\n";
     }
 
     net_fpga::net_fpga(net_fpga &&rh) : n_ins(rh.n_ins),
@@ -230,20 +231,25 @@ namespace fpga
 
     vector<DATA_TYPE> net_fpga::launch_forward(const vector<DATA_TYPE> &inputs) //* returns result
     {
-
+        //cout << "FPGA NET: FORWARD\n";
         if (program_init == false)
         {
             net_fpga::_init_program();
             program_init = true;
+            //cout << "FPGA NET: PROGRAM CREATED\n";
         }
         if (forward_kernel_init == false)
         {
             net_fpga::_init_kernel("network_v1");
             forward_kernel_init = true;
+            //cout << "FPGA NET: KERNEL CREATED\n";
         }
         if (n_ins_buff != n_ins || n_layers_buff != n_layers || n_p_l_buff != n_p_l || params_buff != params)
         {
             net_fpga::_load_params();
+            delete[] inputs_buff;
+            inputs_buff = new DATA_TYPE[n_ins];
+            //cout << "FPGA NET: PARAMS LOADED\n";
         }
 
 #ifdef PERFORMANCE
@@ -253,11 +259,16 @@ namespace fpga
         for (int i = 0; i < n_ins; i++)
             inputs_buff[i] = inputs[i];
 
-        DATA_TYPE *outs;
+        DATA_TYPE outs[n_p_l[n_layers - 1]];
 
-        err = clEnqueueWriteBuffer(queue, inputs_dev, CL_FALSE, 0, n_ins * sizeof(DATA_TYPE), inputs_buff, 1, &finish_event, &init_event);
-        err = clEnqueueTask(queue, kernel, 1, &init_event, &finish_event);
-        err = clEnqueueReadBuffer(queue, outs_dev, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), outs, 1, &finish_event, NULL);
+        cl_event aux;
+
+        err = clEnqueueWriteBuffer(queue, inputs_dev, CL_TRUE, 0, n_ins * sizeof(DATA_TYPE), inputs_buff, 0, NULL, NULL);
+        checkError(err, "Failed to enqueue inputs");
+        err = clEnqueueTask(queue, kernel, 0, NULL, &aux);
+        checkError(err, "Failed to enqueue task");
+        err = clEnqueueReadBuffer(queue, outs_dev, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), outs, 1, &aux, NULL);
+        checkError(err, "Failed to enqueue read outs");
 
 #ifdef PERFORMANCE
         auto end = high_resolution_clock::now();
@@ -277,20 +288,30 @@ namespace fpga
 
         //cl_platform_id platform;
         err = clGetPlatformIDs(1, &platform, NULL);
+        checkError(err, "Failed to get platforms");
 
         //cl_device_id device;
         err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ACCELERATOR, 1, &device, NULL);
+        checkError(err, "Failed to find device");        
 
         //cl_context context;
         context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+        checkError(err, "Failed to create context");
 
         //cl_command_queue queue;
         queue = clCreateCommandQueue(context, device, 0, &err);
+        checkError(err, "Failed to create queue");
 
         //cl_program
         std::string binary_file = getBoardBinaryFile("vector_kernels", device); //Coge el aocx
         program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
 
+        err = clBuildProgram(program, 0, NULL, "", NULL, NULL);
+        checkError(err, "Failed to create program");
+
+        init_event = clCreateUserEvent(context, NULL);
+        finish_event = clCreateUserEvent(context, NULL);
+        
         clSetUserEventStatus(init_event, CL_COMPLETE);
         clSetUserEventStatus(finish_event, CL_COMPLETE);
     }
@@ -298,7 +319,6 @@ namespace fpga
     void net_fpga::_init_kernel(const char *kernel_name)
     {
         // kernel = clCreateKernel(program, "my_kernel", &err);
-        kernel = clCreateKernel(program, kernel_name, &err);
 
         int n_bytes_npl = n_layers * sizeof(int);
         int n_bytes_inputs = n_ins * sizeof(DATA_TYPE);
@@ -306,19 +326,39 @@ namespace fpga
         int n_bytes_bias = n_neurons * sizeof(DATA_TYPE);
         int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
 
-        inputs_dev = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, n_bytes_inputs, NULL, &err);
-        params_dev = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, n_bytes_params, NULL, &err);
-        bias_dev = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, n_bytes_bias, NULL, &err);
-        outs_dev = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, n_bytes_outs, NULL, &err);
-        npl_dev = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY, n_bytes_npl, NULL, &err);
+        //cout << "   Creating buffers:\n";
+        inputs_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_inputs, NULL, &err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        checkError(err, "Failed to create buffer inputs");
+        params_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_params, NULL, &err);
+        checkError(err, "Failed to create buffer params");
+        bias_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_bias, NULL, &err);
+        checkError(err, "Failed to create buffer bias");
+        outs_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_outs, NULL, &err);
+        checkError(err, "Failed to create buffer outputs");
+        npl_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_npl, NULL, &err);
+        checkError(err, "Failed to create buffer npl");
 
+        kernel = clCreateKernel(program, kernel_name, &err);
+        checkError(err, "Failed to create kernel");
+
+        //cout << "   Setting Args:\n";
         err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&inputs_dev);
+        checkError(err, "Failed to set arg inputs");
         err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&params_dev);
+        checkError(err, "Failed to set arg params");
         err = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bias_dev);
+        checkError(err, "Failed to set arg bias");
         err = clSetKernelArg(kernel, 3, sizeof(cl_mem), (void *)&outs_dev);
+        checkError(err, "Failed to set arg outputs");
         err = clSetKernelArg(kernel, 4, sizeof(cl_mem), (void *)&npl_dev);
-        err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
-        err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
+        checkError(err, "Failed to set arg npl");
+        // err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
+        // checkError(err, "Failed to set arg n_layers");
+        // err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
+        // checkError(err, "Failed to set arg n_ins");
+
+
+        
     }
 
     void net_fpga::_load_params()
@@ -336,9 +376,30 @@ namespace fpga
         int n_bytes_bias = n_neurons * sizeof(DATA_TYPE);
         int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
 
-        err = clEnqueueWriteBuffer(queue, params_dev, CL_FALSE, 0, n_bytes_params, params_buff, 0, NULL, NULL);
-        err = clEnqueueWriteBuffer(queue, bias_dev, CL_FALSE, 0, n_bytes_bias, bias_buff, 0, NULL, NULL);
-        err = clEnqueueWriteBuffer(queue, npl_dev, CL_FALSE, 0, n_bytes_npl, n_p_l_buff, 0, NULL, NULL);
+        err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
+        checkError(err, "Failed to set arg n_layers");
+        err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
+        checkError(err, "Failed to set arg n_ins");
+
+        // //cout << "Params: ";
+        // for(int i=0; i<n_params;i++)
+        //     //cout << std::to_string(params_buff[i]) << " ";
+
+        // //cout << "\nBias: ";
+        // for(int i=0; i<n_neurons;i++)
+        //     //cout << std::to_string(bias_buff[i]) << " ";
+
+        //cout << "   Enqueuing Buffers:\n";
+        // //cout << "\nn_params = " << std::to_string(n_params) << "\n";
+        // //cout << "\nn_bytes_params = " << std::to_string(n_bytes_params) << "\n";
+        // //cout << "\nparam 0 = " << std::to_string(params_buff[0]) << "\n";
+        // //cout << "\nparam last = " << std::to_string(params_buff[n_params-1]) << "\n";
+        err = clEnqueueWriteBuffer(queue, params_dev, CL_TRUE, 0, n_bytes_params, params_buff, 0, NULL, NULL);
+        checkError(err, "Failed to launch enqueue params");
+        err = clEnqueueWriteBuffer(queue, bias_dev, CL_TRUE, 0, n_bytes_bias, bias_buff, 0, NULL, NULL);
+        checkError(err, "Failed to launch enqueue bias");
+        err = clEnqueueWriteBuffer(queue, npl_dev, CL_TRUE, 0, n_bytes_npl, n_p_l_buff, 0, NULL, NULL);
+        checkError(err, "Failed to launch enqueue npl");
     }
 
     //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
@@ -365,7 +426,7 @@ namespace fpga
         //     gradient_init = true;
         // }
         // else
-        //     cout << "gradient already init!\n";
+        //     //cout << "gradient already init!\n";
     }
 
     //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
@@ -401,19 +462,19 @@ namespace fpga
         //         }
         //         else
         //         {
-        //             cout << "initialize gradient!\n";
+        //             //cout << "initialize gradient!\n";
         return vector<DATA_TYPE>(iterations, 0);
         // }
     }
 
     void net_fpga::print_inner_vals()
     {
-        // cout << "Valores internos\n\n";
+        // //cout << "Valores internos\n\n";
 
         // for (auto &i : inner_vals)
         // {
         //     i.print();
-        //     cout << "\n";
+        //     //cout << "\n";
         // }
     }
 
@@ -422,7 +483,7 @@ namespace fpga
 #ifdef PERFORMANCE
         return gradient_performance;
 #else
-        cout << "performance not enabled\n";
+        //cout << "performance not enabled\n";
         return 0;
 #endif
     }
@@ -432,7 +493,7 @@ namespace fpga
 #ifdef PERFORMANCE
         return forward_performance;
 #else
-        cout << "performance not enabled\n";
+        //cout << "performance not enabled\n";
         return 0;
 #endif
     }
@@ -443,15 +504,16 @@ namespace fpga
         net_fpga_counter--;
 
         if(net_fpga_counter == 0)
-        {
-            if (kernel)
-                clReleaseKernel(kernel);
-            if (program)
-                clReleaseProgram(program);
-            if (queue)
-                clReleaseCommandQueue(queue);
-            if (context)
-                clReleaseContext(context);
+        {   
+            cleanup();
+            // if (kernel)
+            //     clReleaseKernel(kernel);
+            // if (program)
+            //     clReleaseProgram(program);
+            // if (queue)
+            //     clReleaseCommandQueue(queue);
+            // if (context)
+            //     clReleaseContext(context);
 
             program_init = false;
             forward_kernel_init = false;
@@ -467,5 +529,12 @@ namespace fpga
 
 void cleanup()
 {
-
+    if (fpga::net_fpga::kernel)
+        clReleaseKernel(fpga::net_fpga::kernel);
+    if (fpga::net_fpga::program)
+        clReleaseProgram(fpga::net_fpga::program);
+    if (fpga::net_fpga::queue)
+        clReleaseCommandQueue(fpga::net_fpga::queue);
+    if (fpga::net_fpga::context)
+        clReleaseContext(fpga::net_fpga::context);
 }

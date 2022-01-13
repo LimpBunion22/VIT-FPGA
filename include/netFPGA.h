@@ -1,5 +1,5 @@
-#ifndef NETCPU_H
-#define NETCPU_H
+#ifndef NETFPGA_H
+#define NETFPGA_H
 
 #include <netAbstract.h>
 // #include <mathStructsCPU.h>
@@ -7,12 +7,15 @@
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
 
+
+// void cleanup();
+
 namespace fpga
 {
     class net_fpga : public net::net_abstract
-    {
+    {    
 
-    private:
+    public:
 
         //Net variables
         int n_ins;
@@ -85,6 +88,9 @@ namespace fpga
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;
+
+    // public:
+    //     friend void cleanup();
     };
 }
 
