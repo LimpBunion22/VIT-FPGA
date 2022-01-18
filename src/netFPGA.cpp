@@ -261,13 +261,13 @@ namespace fpga
 
         DATA_TYPE outs[n_p_l[n_layers - 1]];
 
-        cl_event aux;
+        // cl_event aux;
 
-        err = clEnqueueWriteBuffer(queue, inputs_dev, CL_TRUE, 0, n_ins * sizeof(DATA_TYPE), inputs_buff, 0, NULL, NULL);
+        err = clEnqueueWriteBuffer(queue, inputs_dev, CL_FALSE, 0, n_ins * sizeof(DATA_TYPE), inputs_buff, 1, &finish_event, &init_event);
         checkError(err, "Failed to enqueue inputs");
-        err = clEnqueueTask(queue, kernel, 0, NULL, &aux);
+        err = clEnqueueTask(queue, kernel, 1, &init_event, &finish_event);
         checkError(err, "Failed to enqueue task");
-        err = clEnqueueReadBuffer(queue, outs_dev, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), outs, 1, &aux, NULL);
+        err = clEnqueueReadBuffer(queue, outs_dev, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), outs, 1, &finish_event, NULL);
         checkError(err, "Failed to enqueue read outs");
 
 #ifdef PERFORMANCE
@@ -327,15 +327,15 @@ namespace fpga
         int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
 
         //cout << "   Creating buffers:\n";
-        inputs_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_inputs, NULL, &err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        inputs_dev = clCreateBuffer(context, CL_MEM_READ_ONLY, n_bytes_inputs, NULL, &err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         checkError(err, "Failed to create buffer inputs");
-        params_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_params, NULL, &err);
+        params_dev = clCreateBuffer(context, CL_MEM_READ_ONLY, n_bytes_params, NULL, &err);
         checkError(err, "Failed to create buffer params");
-        bias_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_bias, NULL, &err);
+        bias_dev = clCreateBuffer(context, CL_MEM_READ_ONLY, n_bytes_bias, NULL, &err);
         checkError(err, "Failed to create buffer bias");
-        outs_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_outs, NULL, &err);
+        outs_dev = clCreateBuffer(context, CL_MEM_WRITE_ONLY, n_bytes_outs, NULL, &err);
         checkError(err, "Failed to create buffer outputs");
-        npl_dev = clCreateBuffer(context, CL_MEM_READ_WRITE, n_bytes_npl, NULL, &err);
+        npl_dev = clCreateBuffer(context, CL_MEM_READ_ONLY, n_bytes_npl, NULL, &err);
         checkError(err, "Failed to create buffer npl");
 
         kernel = clCreateKernel(program, kernel_name, &err);
@@ -379,27 +379,19 @@ namespace fpga
         err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
         checkError(err, "Failed to set arg n_layers");
         err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
-        checkError(err, "Failed to set arg n_ins");
+        checkError(err, "Failed to set arg n_ins");        
 
-        // //cout << "Params: ";
-        // for(int i=0; i<n_params;i++)
-        //     //cout << std::to_string(params_buff[i]) << " ";
+        cl_event params_ev, bias_event;
 
-        // //cout << "\nBias: ";
-        // for(int i=0; i<n_neurons;i++)
-        //     //cout << std::to_string(bias_buff[i]) << " ";
-
-        //cout << "   Enqueuing Buffers:\n";
-        // //cout << "\nn_params = " << std::to_string(n_params) << "\n";
-        // //cout << "\nn_bytes_params = " << std::to_string(n_bytes_params) << "\n";
-        // //cout << "\nparam 0 = " << std::to_string(params_buff[0]) << "\n";
-        // //cout << "\nparam last = " << std::to_string(params_buff[n_params-1]) << "\n";
-        err = clEnqueueWriteBuffer(queue, params_dev, CL_TRUE, 0, n_bytes_params, params_buff, 0, NULL, NULL);
+        err = clEnqueueWriteBuffer(queue, params_dev, CL_FALSE, 0, n_bytes_params, params_buff, 0, NULL, &params_ev);
         checkError(err, "Failed to launch enqueue params");
-        err = clEnqueueWriteBuffer(queue, bias_dev, CL_TRUE, 0, n_bytes_bias, bias_buff, 0, NULL, NULL);
+        err = clEnqueueWriteBuffer(queue, bias_dev, CL_FALSE, 0, n_bytes_bias, bias_buff, 1, &params_ev, &bias_event);
         checkError(err, "Failed to launch enqueue bias");
-        err = clEnqueueWriteBuffer(queue, npl_dev, CL_TRUE, 0, n_bytes_npl, n_p_l_buff, 0, NULL, NULL);
+        err = clEnqueueWriteBuffer(queue, npl_dev, CL_FALSE, 0, n_bytes_npl, n_p_l_buff, 1, &bias_event, NULL);
         checkError(err, "Failed to launch enqueue npl");
+
+        clReleaseEvent(params_ev);
+        clReleaseEvent(bias_event);
     }
 
     //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
@@ -537,4 +529,6 @@ void cleanup()
         clReleaseCommandQueue(fpga::net_fpga::queue);
     if (fpga::net_fpga::context)
         clReleaseContext(fpga::net_fpga::context);
+    clReleaseEvent(fpga::net_fpga::init_event);
+    clReleaseEvent(fpga::net_fpga::finish_event);
 }
