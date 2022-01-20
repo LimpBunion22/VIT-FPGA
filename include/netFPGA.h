@@ -12,6 +12,14 @@
 
 namespace fpga
 {
+    #define NET_KERNEL 0
+    #define IMAGE_KERNEL 1
+
+    #define IMAGE_HEIGHT 1080
+    #define IMAGE_WIDTH 1920
+
+    #define BATCH_SIZE 24
+
     class net_fpga : public net::net_abstract
     {    
 
@@ -67,12 +75,24 @@ namespace fpga
         static cl_event init_event;
         static cl_event finish_event;
 
+        static cl_event im_init_event[BATCH_SIZE];
+        static cl_event im_finish_event[BATCH_SIZE];
+        static cl_event im_read_event[BATCH_SIZE];
+
+        static unsigned char in_images[BATCH_SIZE][IMAGE_HEIGHT*IMAGE_WIDTH];
+        static unsigned char out_images[BATCH_SIZE][IMAGE_HEIGHT*IMAGE_WIDTH];
+        static int wr_batch_cnt;
+        static int rd_batch_cnt;
+        static int free_batch;
+
 
     private:
         net_fpga() = delete;
-        void _init_program();
+        void _init_program(int prg = NET_KERNEL);
         void _init_kernel(const char* kernel_name);
+        void _init_kernel(const char* kernel_name, const net::image_set &set);
         void _load_params();
+        // void _load_params(const net::image_set &set);
 
     public:
         ~net_fpga();
@@ -84,10 +104,12 @@ namespace fpga
         net::net_data get_net_data() override;
         std::vector<DATA_TYPE> launch_forward(const std::vector<DATA_TYPE> &inputs) override;
         void init_gradient(const net::net_sets &sets) override;
-        std::vector<DATA_TYPE> launch_gradient(size_t iterations) override;
+        std::vector<DATA_TYPE> launch_gradient(size_t iterations, DATA_TYPE error_threshold, DATA_TYPE multiplier) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;
+        void filter_image(const net::image_set &set) override;
+        net::image_set get_filtered_image() override;
 
     // public:
     //     friend void cleanup();
