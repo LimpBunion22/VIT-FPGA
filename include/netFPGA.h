@@ -7,34 +7,32 @@
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
 
-
 // void cleanup();
 
 namespace fpga
 {
-    #define NET_KERNEL 0
-    #define IMAGE_KERNEL 1
+#define NET_KERNEL 0
+#define IMAGE_KERNEL 1
 
-    #define IMAGE_HEIGHT 1080
-    #define IMAGE_WIDTH 1920
+#define IMAGE_HEIGHT 1080
+#define IMAGE_WIDTH 1920
 
-    #define BATCH_SIZE 24
+#define BATCH_SIZE 24
 
     class net_fpga : public net::net_abstract
-    {    
+    {
 
     public:
-
         //Net variables
         int n_ins;
         int n_layers;
-        int* n_p_l;
+        int *n_p_l;
         int n_neurons;
         int n_params;
 
-        DATA_TYPE* params;
+        DATA_TYPE *params;
         int activations;
-        DATA_TYPE* bias;
+        DATA_TYPE *bias;
 
         int n_sets;
         bool gradient_init;
@@ -65,12 +63,12 @@ namespace fpga
 
         static int n_ins_buff;
         static int n_layers_buff;
-        static int* n_p_l_buff;
+        static int *n_p_l_buff;
 
-        static DATA_TYPE* params_buff;
-        static DATA_TYPE* bias_buff;
-        static DATA_TYPE* inputs_buff;
-        static DATA_TYPE* oputputs_buff;
+        static DATA_TYPE *params_buff;
+        static DATA_TYPE *bias_buff;
+        static DATA_TYPE *inputs_buff;
+        static DATA_TYPE *oputputs_buff;
 
         static cl_event init_event;
         static cl_event finish_event;
@@ -79,18 +77,18 @@ namespace fpga
         static cl_event im_finish_event[BATCH_SIZE];
         static cl_event im_read_event[BATCH_SIZE];
 
-        static unsigned char in_images[BATCH_SIZE][IMAGE_HEIGHT*IMAGE_WIDTH];
-        static unsigned char out_images[BATCH_SIZE][IMAGE_HEIGHT*IMAGE_WIDTH];
+        static bool are_images_init;
+        unsigned char *in_images[BATCH_SIZE];
+        unsigned char *out_images[BATCH_SIZE];
         static int wr_batch_cnt;
         static int rd_batch_cnt;
         static int free_batch;
 
-
     private:
         net_fpga() = delete;
         void _init_program(int prg = NET_KERNEL);
-        void _init_kernel(const char* kernel_name);
-        void _init_kernel(const char* kernel_name, const net::image_set &set);
+        void _init_kernel(const char *kernel_name);
+        void _init_kernel(const char *kernel_name, const net::image_set &set);
         void _load_params();
         // void _load_params(const net::image_set &set);
 
@@ -111,8 +109,8 @@ namespace fpga
         void filter_image(const net::image_set &set) override;
         net::image_set get_filtered_image() override;
 
-    // public:
-    //     friend void cleanup();
+        // public:
+        //     friend void cleanup();
     };
 }
 
