@@ -511,7 +511,7 @@ namespace fpga
         //cout << "   Creating buffers:\n";
         in_image = clCreatePipe(context, CL_MEM_HOST_WRITE_ONLY, sizeof(cl_uchar4), IMAGE_HEIGHT, NULL, &err);
         checkError(err, "Failed to create in pipe");
-        out_image_borders = clCreatePipe(context, CL_MEM_HOST_READ_ONLY, sizeof(cl_uchar4), 8, NULL, &err);
+        out_image_borders = clCreatePipe(context, CL_MEM_HOST_READ_ONLY, sizeof(cl_uchar), 8, NULL, &err);
         checkError(err, "Failed to create out pipe");
         // inputs_dev = clCreateBuffer(context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         // checkError(err, "Failed to create buffer inputs");
@@ -527,6 +527,7 @@ namespace fpga
 
         //cout << "   Setting Args:\n";
         err = clSetKernelArg(kernel_in, 0, sizeof(cl_mem), (void *)&in_image);
+        cout << "Error code" << err << " \n";
         checkError(err, "Failed to set inputs");
         err = clSetKernelArg(kernel_out, 0, sizeof(cl_mem), (void *)&out_image_borders);
         checkError(err, "Failed to set outputs");
