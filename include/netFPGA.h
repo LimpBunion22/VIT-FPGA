@@ -50,13 +50,19 @@ namespace fpga
         static cl_platform_id platform;
         static cl_device_id device;
         static cl_context context;
-        static cl_command_queue queue;
-        static cl_kernel kernel;
+        static cl_command_queue queue_in;
+        static cl_command_queue queue_out;
+        // static cl_command_queue queue;
+        static cl_kernel kernel_in;
+        static cl_kernel kernel_out;
+        // static cl_kernel kernel;
         static cl_program program;
         static cl_int err;
 
-        static cl_mem inputs_dev;
-        static cl_mem params_dev;
+        static cl_mem in_image;
+        static cl_mem out_image_borders;
+        // static cl_mem inputs_dev;
+        // static cl_mem params_dev;
         static cl_mem bias_dev;
         static cl_mem outs_dev;
         static cl_mem npl_dev;
@@ -78,12 +84,17 @@ namespace fpga
         static cl_event im_read_event[BATCH_SIZE];
 
         static bool are_images_init;
-        unsigned char *in_images[BATCH_SIZE];
-        unsigned char *out_images[BATCH_SIZE];
+        cl_uchar4 *in_images[BATCH_SIZE];
+        cl_uchar *out_images[BATCH_SIZE];
+        // unsigned char *in_images[BATCH_SIZE];
+        // unsigned char *out_images[BATCH_SIZE];
         static int wr_batch_cnt;
         static int rd_batch_cnt;
         static int free_batch;
 
+        net::image_set out_image;
+        void * (*clMapHostPipeIntelFPGA) (cl_mem, cl_map_flags, size_t, size_t *, cl_int *);
+        cl_int (*clUnmapHostPipeIntelFPGA) (cl_mem, void *, size_t, size_t *);
     private:
         net_fpga() = delete;
         void _init_program(int prg = NET_KERNEL);
