@@ -2,12 +2,9 @@
 #define NETFPGA_H
 
 #include <netAbstract.h>
-// #include <mathStructsCPU.h>
 #include <chrono>
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
-
-// void cleanup();
 
 namespace fpga
 {
@@ -15,13 +12,11 @@ namespace fpga
 #define IMAGE_KERNEL 1
 
 #define IMAGE_HEIGHT 1080
-#define IMAGE_WIDTH 1920
-
-#define BATCH_SIZE 24
+#define IMAGE_WIDTH 1920    
 
     class net_fpga : public net::net_abstract
     {
-
+        
     public:
         //Net variables
         int n_ins;
@@ -41,48 +36,10 @@ namespace fpga
         int64_t forward_performance;
 
         //OpenCL & FPGA variables
-        static int net_fpga_counter;
-        static bool program_init;
-        static bool forward_kernel_init;
-        static bool reload_params;
-
-        // OpenCL runtime configuration
-        static cl_platform_id platform;
-        static cl_device_id device;
-        static cl_context context;
-        static cl_command_queue queue;
-        static cl_kernel kernel;
-        static cl_program program;
-        static cl_int err;
-
-        static cl_mem inputs_dev;
-        static cl_mem params_dev;
-        static cl_mem bias_dev;
-        static cl_mem outs_dev;
-        static cl_mem npl_dev;
-
-        static int n_ins_buff;
-        static int n_layers_buff;
-        static int *n_p_l_buff;
-
-        static DATA_TYPE *params_buff;
-        static DATA_TYPE *bias_buff;
-        static DATA_TYPE *inputs_buff;
-        static DATA_TYPE *oputputs_buff;
-
-        static cl_event init_event;
-        static cl_event finish_event;
-
-        static cl_event im_init_event[BATCH_SIZE];
-        static cl_event im_finish_event[BATCH_SIZE];
-        static cl_event im_read_event[BATCH_SIZE];
-
-        static bool are_images_init;
-        unsigned char *in_images[BATCH_SIZE];
-        unsigned char *out_images[BATCH_SIZE];
-        static int wr_batch_cnt;
-        static int rd_batch_cnt;
-        static int free_batch;
+        int net_fpga_counter;
+        bool program_init;
+        bool forward_kernel_init;
+        bool reload_params;        
 
     private:
         net_fpga() = delete;
