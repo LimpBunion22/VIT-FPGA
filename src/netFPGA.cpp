@@ -251,7 +251,7 @@ namespace fpga
         // cout << "FPGA NET: FORWARD\n";
         if (program_init == false)
         {
-            net_fpga::_init_program();
+            net_fpga::_init_program(NET_KERNEL);
             program_init = true;
             // cout << "FPGA NET: PROGRAM CREATED\n";
         }
@@ -267,7 +267,7 @@ namespace fpga
             delete[] g_inputs_buff;
             g_inputs_buff = new DATA_TYPE[n_ins];
             // cout << "FPGA NET: PARAMS LOADED\n";
-        }
+        }else
 
 #ifdef PERFORMANCE
         auto start = high_resolution_clock::now();
