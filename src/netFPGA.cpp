@@ -267,7 +267,7 @@ namespace fpga
             delete[] g_inputs_buff;
             g_inputs_buff = new DATA_TYPE[n_ins];
             // cout << "FPGA NET: PARAMS LOADED\n";
-        }else
+        }
 
 #ifdef PERFORMANCE
         auto start = high_resolution_clock::now();
