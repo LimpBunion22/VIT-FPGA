@@ -42,7 +42,7 @@ namespace fpga
         net_fpga() = delete;
         void _init_program(int prg = NET_KERNEL);
         void _init_kernel(const char *kernel_name);
-        void _init_kernel(const char *kernel_name, const net::image_set &set);
+        void _init_kernel(const char *kernel_name, const int heigh, const int width);
         void _load_params();
         // void _load_params(const net::image_set &set);
 
@@ -60,7 +60,8 @@ namespace fpga
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;
-        void filter_image(const net::image_set &set) override;
+        // void filter_image(const net::image_set &set) override;
+        void filter_image(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image) override;
         net::image_set get_filtered_image() override;
 
         // public:
