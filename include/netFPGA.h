@@ -61,8 +61,8 @@ namespace fpga
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;
         // void filter_image(const net::image_set &set) override;
-        void filter_image(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image) override;
-        net::image_set get_filtered_image() override;
+        void filter_image(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
+        net::image_set get_filtered_image();
 
         // public:
         //     friend void cleanup();

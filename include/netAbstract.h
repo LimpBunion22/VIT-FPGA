@@ -16,9 +16,6 @@ namespace net
         virtual void print_inner_vals() = 0;
         virtual signed long get_gradient_performance() = 0;
         virtual signed long get_forward_performance() = 0;
-        // virtual void filter_image(const image_set &set) = 0;
-        virtual void filter_image(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
-        virtual image_set get_filtered_image() = 0;
     };
 }
 #endif
