@@ -6,10 +6,14 @@
 #include <stdlib.h>
 #include <cstring>
 #include <chrono>
+#include <iomanip>
+#include <ctime>
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
 
 #define BATCH_SIZE 24
+#define P1920x1080 1920*1080
+#define P1000x1000 1000*1000
 
 namespace fpga
 {
@@ -17,69 +21,76 @@ namespace fpga
     using namespace std;
     using namespace chrono;
 
-    //OpenCL & FPGA variables
-    int net_fpga_counter = 0;
-    bool program_init = false;
-    bool forward_kernel_init = false;
-    bool reload_params = true;        
+    //General variables
+    string g_net_ident = "";
+    int g_net_fpga_counter = 0;
+    string g_program_loaded = NOT_LOADED;
+    cl_int g_err = 0;      
 
+    //IMG general variables
     net::image_set out_image;
 
-    // OpenCL runtime configuration
+    //OpenCL runtime configuration variables
     cl_platform_id g_platform = NULL;
     cl_device_id g_device = NULL;
     cl_context g_context = NULL;
+    cl_program g_program = NULL;
+
+    //OpenCL queues
     cl_command_queue g_queue_in = NULL;
     cl_command_queue g_queue_out = NULL;
-    cl_program g_program = NULL;
+
+    //OpenCL kernels
     cl_kernel g_kernel_in = NULL;
     cl_kernel g_kernel_out = NULL;
-    cl_int g_err = 0;
 
-    cl_mem g_inputs_dev = NULL;
-    cl_mem g_in_red_dev = NULL;
-    cl_mem g_in_green_dev = NULL;
-    cl_mem g_in_blue_dev = NULL;
-    cl_mem g_params_dev = NULL;
-    cl_mem g_bias_dev = NULL;
-    cl_mem g_outs_dev = NULL;
-    cl_mem g_npl_dev = NULL;
+    //NN OpenCL buffers
+    cl_mem g_clmem_in_nn = NULL;
+    cl_mem g_clmem_in_nn_params = NULL;
+    cl_mem g_clmem_in_nn_bias = NULL;
+    cl_mem g_clmem_in_nn_npl = NULL;
+    cl_mem g_clmem_out_nn = NULL;
 
-    int g_n_ins_buff = 0;
-    int g_n_layers_buff = 0;
-    int *g_n_p_l_buff = NULL;
+    //IMG OpenCL buffers
+    cl_mem g_clmem_in_img_red = NULL;
+    cl_mem g_clmem_in_img_green = NULL;
+    cl_mem g_clmem_in_img_blue = NULL;
+    cl_mem g_clmem_out_img = NULL;
 
-    DATA_TYPE *g_params_buff = NULL;
-    DATA_TYPE *g_bias_buff = NULL;
-    DATA_TYPE *g_inputs_buff = NULL;
-    DATA_TYPE *g_oputputs_buff = NULL;
-
-    cl_event g_init_event = NULL;
-    cl_event g_finish_event = NULL;
-
+    //OpenCL events
     cl_event g_im_init_event[BATCH_SIZE] = {nullptr};
     cl_event g_im_finish_event[BATCH_SIZE] = {nullptr};
     cl_event g_im_read_event[BATCH_SIZE] = {nullptr};
 
-    bool g_are_images_init = false;
-    unsigned char *g_in_images[BATCH_SIZE] = {nullptr};
-    unsigned char *g_out_images[BATCH_SIZE] = {nullptr};
+    //NN buff variables
+    DATA_TYPE *g_inputs_buff = NULL;
+    DATA_TYPE *g_oputputs_buff = NULL;
+
+    //Batch variables
     int g_wr_batch_cnt = 0;
     int g_rd_batch_cnt = 0;
     int g_free_batch = BATCH_SIZE;
+
+    //IMG batch variables
+    unsigned char *g_in_images[BATCH_SIZE] = {nullptr};
+    unsigned char *g_out_images[BATCH_SIZE] = {nullptr};
 
     net_fpga::net_fpga(const net::net_data &data, bool derivate, bool random)
         : n_layers(data.n_p_l.size()), n_sets(0), gradient_init(false), gradient_performance(0), forward_performance(0), n_ins(data.n_ins)
 
     {
-        net_fpga_counter++;
-
+        auto t = std::time(nullptr);
+        auto tm = *std::localtime(&t);
+        ostringstream oss;
+        oss << put_time(&tm, "%d-%m-%Y %H-%M-%S");
+        net_ident = oss.str();
+         
+        g_net_fpga_counter++;
         n_p_l = new int[n_layers];
         n_neurons = 0;
         n_params = 0;
 
-        for (int i = 0; i < n_layers; i++)
-        {
+        for (int i = 0; i < n_layers; i++){
             n_p_l[i] = data.n_p_l[i];
             n_neurons += n_p_l[i];
             if (i == 0)
@@ -92,24 +103,18 @@ namespace fpga
         activations = 1; // 1 -> RELU2
         bias = new float[n_neurons];
 
-        if (random)
-        {
+        if (random){
             for (int i = 0; i < n_params; i++)
                 params[i] = float(rand() % 200 - 100) / 100;
             for (int i = 0; i < n_neurons; i++)
                 bias[i] = float(rand() % 200 - 100) / 100;
-        }
-        else
-        {
+        }else{
             int param_cnt = 0;
             int neuron_cnt = 0;
 
-            for (int i = 0; i < n_layers; i++)
-            {
-                for (int j = 0; j < n_p_l[i]; j++)
-                {
-                    for (int k = 0; k < data.params[i][j].size(); k++)
-                    {
+            for (int i = 0; i < n_layers; i++){
+                for (int j = 0; j < n_p_l[i]; j++){
+                    for (int k = 0; k < data.params[i][j].size(); k++){
                         params[param_cnt] = data.params[i][j][k];
                         param_cnt++;
                     }
@@ -127,10 +132,11 @@ namespace fpga
                                         n_params(rh.n_params),
                                         activations(rh.activations),
                                         n_sets(rh.n_sets),
-                                        gradient_init(rh.gradient_init)
+                                        gradient_init(rh.gradient_init),
+                                        net_ident(rh.net_ident)
 
     {
-        net_fpga_counter++;
+        g_net_fpga_counter++;
 
         delete[] n_p_l;
         delete[] params;
@@ -149,7 +155,8 @@ namespace fpga
     {
         if (this != &rh)
         {
-            net_fpga_counter++;
+            net_ident = rh.net_ident;
+            g_net_fpga_counter++;
 
             n_ins = rh.n_ins;
             n_layers = rh.n_layers;
@@ -179,38 +186,32 @@ namespace fpga
     net_fpga &net_fpga::operator=(const net_fpga &rh)
     {
         if (this != &rh)
-        {
-            net_fpga_counter++;
+        {   
+            net_ident = rh.net_ident;
+            g_net_fpga_counter++;
+            n_ins = rh.n_ins;
+            n_layers = rh.n_layers;
+            n_neurons = rh.n_neurons;
+            n_params = rh.n_params;
 
-            bool del = (n_ins != rh.n_ins) || (n_layers != rh.n_layers);
-            for (int i = 0; i < n_layers && !del; i++)
-                del = n_p_l[i] != rh.n_p_l[i];
+            activations = rh.activations;
+            n_sets = rh.n_sets;
+            gradient_init = rh.gradient_init;
 
-            if (del)
-            {
-                n_ins = rh.n_ins;
-                n_layers = rh.n_layers;
-                n_neurons = rh.n_neurons;
-                n_params = rh.n_params;
+            delete[] n_p_l;
+            delete[] params;
+            delete[] bias;
 
-                activations = rh.activations;
-                n_sets = rh.n_sets;
-                gradient_init = rh.gradient_init;
+            n_p_l = new int[n_layers];
+            params = new float[n_params];
+            bias = new float[n_neurons];
 
-                delete[] n_p_l;
-                delete[] params;
-                delete[] bias;
+            for (int i = 0; i < n_params; i++)
+                params[i] = rh.params[i];
 
-                n_p_l = new int[n_layers];
-                params = new float[n_params];
-                bias = new float[n_neurons];
-
-                for (int i = 0; i < n_params; i++)
-                    params[i] = rh.params[i];
-
-                for (int i = 0; i < n_neurons; i++)
-                    bias[i] = rh.bias[i];
-            }
+            for (int i = 0; i < n_neurons; i++)
+                bias[i] = rh.bias[i];
+            
         }
 
         return *this;
@@ -226,117 +227,81 @@ namespace fpga
         int params_cnt = 0;
         int neurons_cnt = 0;
 
-        for (int i = 0; i < n_layers; i++)
-        {
+        for (int i = 0; i < n_layers; i++){
             data.n_p_l[i] = n_p_l[i];
             int n_params = (i == 0) ? n_ins : n_p_l[i - 1];
             data.params.emplace_back(n_p_l[i], vector<DATA_TYPE>(n_params));
             data.bias.emplace_back(n_p_l[i]);
 
-            for (int j = 0; j < n_p_l[i]; j++)
-            {
+            for (int j = 0; j < n_p_l[i]; j++){
                 data.bias[i][j] = bias[neurons_cnt];
                 neurons_cnt++;
 
-                for (int k = 0; k < n_ins; k++)
-                {
+                for (int k = 0; k < n_ins; k++){
                     data.params[i][j][k] = params[params_cnt];
                     params_cnt++;
                 }
             }
         }
-
         return data;
     }
 
     vector<DATA_TYPE> net_fpga::launch_forward(const vector<DATA_TYPE> &inputs) //* returns result
     {
         // cout << "FPGA NET: FORWARD\n";
-        if (program_init == false)
-        {
-            net_fpga::_init_program(NET_KERNEL);
-            program_init = true;
+        if (g_program_loaded != NN_DNN1)        
+            net_fpga::_init_program(NN_DNN1, NN);
             // cout << "FPGA NET: PROGRAM CREATED\n";
-        }
-        if (forward_kernel_init == false)
-        {
-            net_fpga::_init_kernel("network_v1");
-            forward_kernel_init = true;
-            // cout << "FPGA NET: KERNEL CREATED\n";
-        }
-        if (g_n_ins_buff != n_ins || g_n_layers_buff != n_layers || g_n_p_l_buff != n_p_l || g_params_buff != params)
-        {
+        
+        if (g_net_ident != net_ident)        
             net_fpga::_load_params();
-            delete[] g_inputs_buff;
-            g_inputs_buff = new DATA_TYPE[n_ins];
-            // cout << "FPGA NET: PARAMS LOADED\n";
-        }
+            // cout << "FPGA NET: PARAMS LOADED\n";        
 
 #ifdef PERFORMANCE
         auto start = high_resolution_clock::now();
 #endif
-
         for (int i = 0; i < n_ins; i++)
             g_inputs_buff[i] = inputs[i];
 
-        DATA_TYPE outs[n_p_l[n_layers - 1]];
-
-        // cl_event aux;
-
-        g_err = clEnqueueWriteBuffer(g_queue_in, g_inputs_dev, CL_FALSE, 0, n_ins * sizeof(DATA_TYPE), g_inputs_buff, 1, &g_finish_event, &g_init_event);
+        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn, CL_FALSE, 0, n_ins * sizeof(DATA_TYPE), g_inputs_buff, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue inputs");
-        g_err = clEnqueueTask(g_queue_in, g_kernel_in, 1, &g_init_event, &g_finish_event);
+        g_err = clEnqueueTask(g_queue_in, g_kernel_in, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue task");
-        g_err = clEnqueueReadBuffer(g_queue_in, g_outs_dev, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), outs, 1, &g_finish_event, NULL);
+
+        std::vector<DATA_TYPE> vec_out(n_p_l[n_layers - 1]);
+        g_err = clEnqueueReadBuffer(g_queue_in, g_clmem_out_nn, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), g_oputputs_buff, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue read outs");
 
 #ifdef PERFORMANCE
         auto end = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(end - start);
         forward_performance = duration.count();
-#endif
-        std::vector<DATA_TYPE> vec_out(n_p_l[n_layers - 1]);
-        // for (int i = 0; i < n_p_l[n_layers - 1]; i++)
-        //     vec_out[i] = outs[i];
+#endif        
+        for (int i = 0; i < n_p_l[n_layers - 1]; i++)
+            vec_out[i] = g_oputputs_buff[i];
 
         return vec_out;
     }
 
-    // void net_fpga::filter_image(const net::image_set &set)
-    // {
-    // }
-
-    void net_fpga::filter_image(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image)
+    void net_fpga::process_img_1920_1080(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image)
     {
         // cout << "FPGA NET: FORWARD\n";
-        if (program_init == false)
-        {
-            net_fpga::_init_program(IMAGE_KERNEL);
-            program_init = true;
-            // cout << "FPGA NET: PROGRAM CREATED\n";
-        }
-        if (forward_kernel_init == false)
-        {
-            net_fpga::_init_kernel("image_process", 1080, 1920);
-            forward_kernel_init = true;
-            // cout << "FPGA NET: KERNEL CREATED\n";
-        }
+        if (g_program_loaded != IMG_1920x1080)        
+            net_fpga::_init_program(IMG_1920x1080, IMG, P1920x1080);
 
         if (g_free_batch > 0)
         {
             g_free_batch--;
 
-
             // cout << "Enqueuing image in\n";
-            g_err = clEnqueueWriteBuffer(g_queue_in, g_in_red_dev, CL_FALSE, 0, IMAGE_HEIGHT * IMAGE_WIDTH * sizeof(unsigned char), red_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
-            checkError(g_err, "Failed to enqueue inputs");
-            g_err = clEnqueueWriteBuffer(g_queue_in, g_in_green_dev, CL_FALSE, 0, IMAGE_HEIGHT * IMAGE_WIDTH * sizeof(unsigned char), green_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
-            checkError(g_err, "Failed to enqueue inputs");
-            g_err = clEnqueueWriteBuffer(g_queue_in, g_in_blue_dev, CL_FALSE, 0, IMAGE_HEIGHT * IMAGE_WIDTH * sizeof(unsigned char), blue_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), &(g_im_init_event[g_wr_batch_cnt]));
-            checkError(g_err, "Failed to enqueue inputs");
-            // delete[] test_buff;
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_red, CL_FALSE, 0, P1920x1080*sizeof(unsigned char), red_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs red");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_green, CL_FALSE, 0, P1920x1080*sizeof(unsigned char), green_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs green");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_blue, CL_FALSE, 0, P1920x1080*sizeof(unsigned char), blue_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), &(g_im_init_event[g_wr_batch_cnt]));
+            checkError(g_err, "Failed to enqueue inputs blue");
+          
             int next_wr_batch = g_wr_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_wr_batch_cnt + 1;
-
             // cout << "Enqueuing image in kernel\n";
             g_err = clEnqueueTask(g_queue_in, g_kernel_in, 1, &(g_im_init_event[g_wr_batch_cnt]), NULL);
             checkError(g_err, "Failed to enqueue task");
@@ -346,10 +311,9 @@ namespace fpga
             checkError(g_err, "Failed to enqueue task");
 
             // cout << "Enqueuing image out\n";
-            g_err = clEnqueueReadBuffer(g_queue_out, g_outs_dev, CL_FALSE, 0, IMAGE_HEIGHT * IMAGE_WIDTH * sizeof(unsigned char), g_out_images[g_wr_batch_cnt], 1, &(g_im_finish_event[next_wr_batch]), &(g_im_read_event[g_wr_batch_cnt]));
+            g_err = clEnqueueReadBuffer(g_queue_out, g_clmem_out_nn, CL_FALSE, 0, P1920x1080*sizeof(unsigned char), g_out_images[g_wr_batch_cnt], 1, &(g_im_finish_event[next_wr_batch]), &(g_im_read_event[g_wr_batch_cnt]));
             checkError(g_err, "Failed to enqueue read outs");
             g_wr_batch_cnt = next_wr_batch;
-
             // cout << "Leaving fpga code\n";
         }
         else
@@ -358,99 +322,152 @@ namespace fpga
         }
     }
 
-    net::image_set net_fpga::get_filtered_image()
+    net::image_set net_fpga::get_img_1920_1080()
     {
         // net::image_set out_image;
         out_image.original_x_pos = 0;
         out_image.original_y_pos = 0;
-        out_image.original_h = IMAGE_HEIGHT;
-        out_image.original_w = IMAGE_WIDTH;
+        out_image.original_h = 1920;
+        out_image.original_w = 1080;
 
         if (g_free_batch < BATCH_SIZE)
         {
-            // cout << "Leyendo datos\n";
-            // cout << "Freebatch " << free_batch << "\n";
-            // cout << CL_QUEUED << "\n";
-            // cout << CL_SUBMITTED << "\n";
-            // cout << CL_RUNNING << "\n";
-            // cout << CL_COMPLETE << "\n";
-            
-            // size_t size = sizeof(cl_int);
-            // cl_int *ptr = new cl_int[1];
-            // g_err = clGetEventInfo(g_im_finish_event[0],CL_EVENT_COMMAND_EXECUTION_STATUS, size, (void*)ptr, NULL);
-            // checkError(g_err, "Failed get event info");
-            // cout << "Finish event 0: " << ptr[0] << "\n";
-            // clGetEventInfo(g_im_finish_event[1],CL_EVENT_COMMAND_EXECUTION_STATUS, size, (void*)ptr, NULL);
-            // cout << "Finish event 1: " << ptr[0] << "\n";
-            // clGetEventInfo(g_im_init_event[0],CL_EVENT_COMMAND_EXECUTION_STATUS, size, (void*)ptr, NULL);
-            // cout << "Init event 0: " << ptr[0] << "\n";
-            // delete[] ptr;
             g_free_batch++;
             clWaitForEvents(1, &(g_im_read_event[g_rd_batch_cnt]));
-            // out_image.resized_image_data.reserve(IMAGE_HEIGHT * IMAGE_WIDTH);
 
-            for (int i = 0; i < IMAGE_HEIGHT * IMAGE_WIDTH; i++)
+            for (int i = 0; i < P1920x1080 ; i++)
                 out_image.resized_image_data[i] = g_out_images[g_rd_batch_cnt][i];
-                // out_image.resized_image_data.emplace_back(g_out_images[g_rd_batch_cnt][i]);
 
             g_rd_batch_cnt = g_rd_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_rd_batch_cnt + 1;
             // cout << "Datos leidos\n";
         }
         else
         {
-            // cout << "PILA VACIA\n";
+            cout << "PILA VACIA\n";
         }
-
         // cout << out_image.resized_image_data.size() << "\n";
         return out_image;
     }
 
-    void net_fpga::_init_program(int prg)
+    void net_fpga::process_img_1000_1000(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image)
     {
-        // clMapHostPipeIntelFPGA = (void * (*) (cl_mem, cl_map_flags, size_t, size_t *, cl_int *)) clGetExtensionFunctionAddress("clMapHostPipeIntelFPGA");
-        // clUnmapHostPipeIntelFPGA = (cl_int (*) (cl_mem, void *, size_t, size_t *)) clGetExtensionFunctionAddress("clUnmapHostPipeIntelFPGA");
-        out_image.resized_image_data.reserve(IMAGE_HEIGHT * IMAGE_WIDTH);
-        for (int i = 0; i < IMAGE_HEIGHT * IMAGE_WIDTH; i++)
-            out_image.resized_image_data.emplace_back(0);
+        // cout << "FPGA NET: FORWARD\n";
+        if (g_program_loaded != IMG_1000x1000)        
+            net_fpga::_init_program(IMG_1000x1000, IMG, P1000x1000);
+            // cout << "FPGA NET: PROGRAM CREATED\n";
+
+        if (g_free_batch > 0)
+        {
+            g_free_batch--;
+
+            // cout << "Enqueuing image in\n";
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_red, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), red_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_green, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), green_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_blue, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), blue_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), &(g_im_init_event[g_wr_batch_cnt]));
+            checkError(g_err, "Failed to enqueue inputs");
+          
+            int next_wr_batch = g_wr_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_wr_batch_cnt + 1;
+            // cout << "Enqueuing image in kernel\n";
+            g_err = clEnqueueTask(g_queue_in, g_kernel_in, 1, &(g_im_init_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue task");
+
+            // cout << "Enqueuing image out kernel\n";
+            g_err = clEnqueueTask(g_queue_out, g_kernel_out, 1, &(g_im_init_event[g_wr_batch_cnt]), &(g_im_finish_event[next_wr_batch]));
+            checkError(g_err, "Failed to enqueue task");
+
+            // cout << "Enqueuing image out\n";
+            g_err = clEnqueueReadBuffer(g_queue_out, g_clmem_out_nn, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), g_out_images[g_wr_batch_cnt], 1, &(g_im_finish_event[next_wr_batch]), &(g_im_read_event[g_wr_batch_cnt]));
+            checkError(g_err, "Failed to enqueue read outs");
+            g_wr_batch_cnt = next_wr_batch;
+            // cout << "Leaving fpga code\n";
+        }
+        else
+        {
+            cout << "PILA LLENA\n";
+        }
+    }
+
+    net::image_set net_fpga::get_img_1000_1000()
+    {
+        // net::image_set out_image;
+        out_image.original_x_pos = 0;
+        out_image.original_y_pos = 0;
+        out_image.original_h = 1000;
+        out_image.original_w = 1000;
+
+        if (g_free_batch < BATCH_SIZE)
+        {
+            g_free_batch++;
+            clWaitForEvents(1, &(g_im_read_event[g_rd_batch_cnt]));
+
+            for (int i = 0; i < P1000x1000 ; i++)
+                out_image.resized_image_data[i] = g_out_images[g_rd_batch_cnt][i];
+
+            g_rd_batch_cnt = g_rd_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_rd_batch_cnt + 1;
+            // cout << "Datos leidos\n";
+        }
+        else
+        {
+            cout << "PILA VACIA\n";
+        }
+        // cout << out_image.resized_image_data.size() << "\n";
+        return out_image;
+    }
+
+    void net_fpga::_init_program(std::string prg_name, int net_kind, int pxl_count)
+    {    
+        g_program_loaded = prg_name;
 
         //Platform, device and context
-
         //cl_platform_id platform;
         g_err = clGetPlatformIDs(1, &g_platform, NULL);
         checkError(g_err, "Failed to get platforms");
-
         //cl_device_id device;
         g_err = clGetDeviceIDs(g_platform, CL_DEVICE_TYPE_ACCELERATOR, 1, &g_device, NULL);
         checkError(g_err, "Failed to find device");
-
         //cl_context context;
         g_context = clCreateContext(NULL, 1, &g_device, NULL, NULL, &g_err);
         checkError(g_err, "Failed to create context");
 
-        //cl_command_queue queue;
-        g_queue_in = clCreateCommandQueue(g_context, g_device, 0, &g_err);
-        checkError(g_err, "Failed to create queue");
-        g_queue_out = clCreateCommandQueue(g_context, g_device, 0, &g_err);
-        checkError(g_err, "Failed to create queue");
-
         //cl_program
-        const char *prg_name = (prg == NET_KERNEL ? "vector_kernels" : "image_kernels");
-        std::string binary_file = getBoardBinaryFile(prg_name, g_device); //Coge el aocx
+        std::string binary_file = getBoardBinaryFile(prg_name.c_str(), g_device); //Coge el aocx
         g_program = createProgramFromBinary(g_context, binary_file.c_str(), &g_device, 1);
-
         g_err = clBuildProgram(g_program, 0, NULL, "", NULL, NULL);
         checkError(g_err, "Failed to create program");
 
-        g_init_event = clCreateUserEvent(g_context, NULL);
-        g_finish_event = clCreateUserEvent(g_context, NULL);
+        //cl_command_queue queue;
+        g_queue_in = clCreateCommandQueue(g_context, g_device, 0, &g_err);
+        checkError(g_err, "Failed to create queue");
 
-        clSetUserEventStatus(g_init_event, CL_COMPLETE);
-        clSetUserEventStatus(g_finish_event, CL_COMPLETE);
+        switch(net_kind)
+        {
+            case NN:
+                _init_nn_kernels();
+                break;
+
+            case IMG:
+                g_queue_out = clCreateCommandQueue(g_context, g_device, 0, &g_err);
+                checkError(g_err, "Failed to create queue");
+
+                _init_img_kernels(pxl_count);
+
+                if (out_image.resized_image_data.capacity()<pxl_count)
+                    out_image.resized_image_data.reserve(pxl_count);
+
+                while(out_image.resized_image_data.size() < pxl_count)
+                    out_image.resized_image_data.emplace_back(0);
+
+                break;
+
+            default:
+                cout << "ERROR: Tipo de programa FPGA no implementado\n";
+        }    
     }
 
-    void net_fpga::_init_kernel(const char *kernel_name)
+    void net_fpga::_init_nn_kernels()
     {
-        // kernel = clCreateKernel(program, "my_kernel", &err);
         int n_bytes_npl = n_layers * sizeof(int);
         int n_bytes_inputs = n_ins * sizeof(DATA_TYPE);
         int n_bytes_params = n_params * sizeof(DATA_TYPE);
@@ -458,82 +475,74 @@ namespace fpga
         int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
 
         // cout << "   Creating buffers:\n";
-        g_inputs_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_inputs, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        g_clmem_in_nn = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_inputs, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         checkError(g_err, "Failed to create buffer inputs");
-        g_params_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_params, NULL, &g_err);
+        g_clmem_in_nn_params = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_params, NULL, &g_err);
         checkError(g_err, "Failed to create buffer params");
-        g_bias_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_bias, NULL, &g_err);
+        g_clmem_in_nn_bias = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_bias, NULL, &g_err);
         checkError(g_err, "Failed to create buffer bias");
-        g_outs_dev = clCreateBuffer(g_context, CL_MEM_WRITE_ONLY, n_bytes_outs, NULL, &g_err);
+        g_clmem_out_nn = clCreateBuffer(g_context, CL_MEM_WRITE_ONLY, n_bytes_outs, NULL, &g_err);
         checkError(g_err, "Failed to create buffer outputs");
-        g_npl_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_npl, NULL, &g_err);
+        g_clmem_in_nn_npl = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_npl, NULL, &g_err);
         checkError(g_err, "Failed to create buffer npl");
 
-        g_kernel_in = clCreateKernel(g_program, kernel_name, &g_err);
+        g_kernel_in = clCreateKernel(g_program, NN_DNN1_KERNEL, &g_err);
         checkError(g_err, "Failed to create kernel");
 
         // cout << "   Setting Args:\n";
-        g_err = clSetKernelArg(g_kernel_in, 0, sizeof(cl_mem), (void *)&g_inputs_dev);
+        g_err = clSetKernelArg(g_kernel_in, 0, sizeof(cl_mem), (void *)&g_clmem_in_nn);
         checkError(g_err, "Failed to set arg inputs");
-        g_err = clSetKernelArg(g_kernel_in, 1, sizeof(cl_mem), (void *)&g_params_dev);
+        g_err = clSetKernelArg(g_kernel_in, 1, sizeof(cl_mem), (void *)&g_clmem_in_nn_params);
         checkError(g_err, "Failed to set arg params");
-        g_err = clSetKernelArg(g_kernel_in, 2, sizeof(cl_mem), (void *)&g_bias_dev);
+        g_err = clSetKernelArg(g_kernel_in, 2, sizeof(cl_mem), (void *)&g_clmem_in_nn_bias);
         checkError(g_err, "Failed to set arg bias");
-        g_err = clSetKernelArg(g_kernel_in, 3, sizeof(cl_mem), (void *)&g_outs_dev);
+        g_err = clSetKernelArg(g_kernel_in, 3, sizeof(cl_mem), (void *)&g_clmem_out_nn);
         checkError(g_err, "Failed to set arg outputs");
-        g_err = clSetKernelArg(g_kernel_in, 4, sizeof(cl_mem), (void *)&g_npl_dev);
+        g_err = clSetKernelArg(g_kernel_in, 4, sizeof(cl_mem), (void *)&g_clmem_in_nn_npl);
         checkError(g_err, "Failed to set arg npl");
-        // err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
-        // checkError(err, "Failed to set arg n_layers");
-        // err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
-        // checkError(err, "Failed to set arg n_ins");
     }
 
-    void net_fpga::_init_kernel(const char *kernel_name, const int heigh, const int width)
+    void net_fpga::_init_img_kernels(int pxl_count)
     {
         // cout << "   Reserving images:\n";
-        if (!g_are_images_init)
-        {
-            for (int i = 0; i < BATCH_SIZE; i++)
-            {
-                g_in_images[i] = new unsigned char[IMAGE_WIDTH * IMAGE_HEIGHT]();
-                g_out_images[i] = new unsigned char[IMAGE_WIDTH * IMAGE_HEIGHT]();
-            }
-            g_are_images_init = true;
+        for (int i = 0; i < BATCH_SIZE; i++)
+        {   
+            delete[] g_in_images[i];
+            delete[] g_out_images[i];
+            g_in_images[i] = new unsigned char[pxl_count]();
+            g_out_images[i] = new unsigned char[pxl_count]();
         }
+
         // kernel = clCreateKernel(program, "my_kernel", &err);
-        int n_bytes_in_image = heigh * width * sizeof(unsigned char);
-        int n_bytes_out_image = heigh * width * sizeof(unsigned char);
+        int n_bytes_in_image = pxl_count * sizeof(unsigned char);
+        int n_bytes_out_image = pxl_count * sizeof(unsigned char);
 
         // cout << "   Creating buffers:\n";
-        g_in_red_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        g_clmem_in_img_red = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         checkError(g_err, "Failed to create buffer inputs");
-        g_in_green_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        g_clmem_in_img_green = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         checkError(g_err, "Failed to create buffer inputs");
-        g_in_blue_dev = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
+        g_clmem_in_img_blue = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_in_image, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
         checkError(g_err, "Failed to create buffer inputs");
-        g_outs_dev = clCreateBuffer(g_context, CL_MEM_WRITE_ONLY, n_bytes_out_image, NULL, &g_err);
+        g_clmem_out_nn = clCreateBuffer(g_context, CL_MEM_WRITE_ONLY, n_bytes_out_image, NULL, &g_err);
         checkError(g_err, "Failed to create buffer outputs");
 
         // cout << "   Creating kernels:\n";
-        g_kernel_in = clCreateKernel(g_program, "image_process", &g_err);
+        g_kernel_in = clCreateKernel(g_program, IMG_IN_KERNEL, &g_err);
         checkError(g_err, "Failed to create kernel");
-        g_kernel_out = clCreateKernel(g_program, "image_borders", &g_err);
+        g_kernel_out = clCreateKernel(g_program, IMG_OUT_BORDERS_KERNEL, &g_err);
         checkError(g_err, "Failed to create kernel");
 
         // cout << "   Setting Args:\n";
-        g_err = clSetKernelArg(g_kernel_in, 0, sizeof(cl_mem), (void *)&g_in_red_dev);
+        g_err = clSetKernelArg(g_kernel_in, 0, sizeof(cl_mem), (void *)&g_clmem_in_img_red);
         checkError(g_err, "Failed to set arg inputs 0");
-        g_err = clSetKernelArg(g_kernel_in, 1, sizeof(cl_mem), (void *)&g_in_green_dev);
+        g_err = clSetKernelArg(g_kernel_in, 1, sizeof(cl_mem), (void *)&g_clmem_in_img_green);
         checkError(g_err, "Failed to set arg inputs 1");
-        g_err = clSetKernelArg(g_kernel_in, 2, sizeof(cl_mem), (void *)&g_in_blue_dev);
+        g_err = clSetKernelArg(g_kernel_in, 2, sizeof(cl_mem), (void *)&g_clmem_in_img_blue);
         checkError(g_err, "Failed to set arg inputs 2");
-        g_err = clSetKernelArg(g_kernel_out, 0, sizeof(cl_mem), (void *)&g_outs_dev);
+
+        g_err = clSetKernelArg(g_kernel_out, 0, sizeof(cl_mem), (void *)&g_clmem_out_nn);
         checkError(g_err, "Failed to set arg outputs");
-        // err = clSetKernelArg(kernel, 5, sizeof(cl_int), (void *)&n_layers_buff);
-        // checkError(err, "Failed to set arg n_layers");
-        // err = clSetKernelArg(kernel, 6, sizeof(cl_int), (void *)&n_ins_buff);
-        // checkError(err, "Failed to set arg n_ins");
 
         // im_init_event[0] = clCreateUserEvent(context, NULL);
         g_im_finish_event[0] = clCreateUserEvent(g_context, NULL);
@@ -544,12 +553,11 @@ namespace fpga
 
     void net_fpga::_load_params()
     {
-        g_n_ins_buff = n_ins;
-        g_n_layers_buff = n_layers;
-        g_n_p_l_buff = n_p_l;
+        delete[] g_inputs_buff;
+        delete[] g_oputputs_buff;
 
-        g_params_buff = params;
-        g_bias_buff = bias;
+        g_inputs_buff = new DATA_TYPE[n_ins];
+        g_oputputs_buff = new DATA_TYPE[n_p_l[n_layers - 1]];
 
         int n_bytes_npl = n_layers * sizeof(int);
         int n_bytes_inputs = n_ins * sizeof(DATA_TYPE);
@@ -557,22 +565,17 @@ namespace fpga
         int n_bytes_bias = n_neurons * sizeof(DATA_TYPE);
         int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
 
-        g_err = clSetKernelArg(g_kernel_in, 5, sizeof(cl_int), (void *)&g_n_layers_buff);
+        g_err = clSetKernelArg(g_kernel_in, 5, sizeof(cl_int), (void *)&n_layers);
         checkError(g_err, "Failed to set arg n_layers");
-        g_err = clSetKernelArg(g_kernel_in, 6, sizeof(cl_int), (void *)&g_n_ins_buff);
+        g_err = clSetKernelArg(g_kernel_in, 6, sizeof(cl_int), (void *)&n_ins);
         checkError(g_err, "Failed to set arg n_ins");
 
-        cl_event params_ev, bias_event;
-
-        g_err = clEnqueueWriteBuffer(g_queue_in, g_params_dev, CL_FALSE, 0, n_bytes_params, g_params_buff, 0, NULL, &params_ev);
+        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn_params, CL_FALSE, 0, n_bytes_params, params, 0, NULL, NULL);
         checkError(g_err, "Failed to launch enqueue params");
-        g_err = clEnqueueWriteBuffer(g_queue_in, g_bias_dev, CL_FALSE, 0, n_bytes_bias, g_bias_buff, 1, &params_ev, &bias_event);
+        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn_bias, CL_FALSE, 0, n_bytes_bias, bias, 0, NULL, NULL);
         checkError(g_err, "Failed to launch enqueue bias");
-        g_err = clEnqueueWriteBuffer(g_queue_in, g_npl_dev, CL_FALSE, 0, n_bytes_npl, g_n_p_l_buff, 1, &bias_event, NULL);
+        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn_npl, CL_FALSE, 0, n_bytes_npl, n_p_l, 0, NULL, NULL);
         checkError(g_err, "Failed to launch enqueue npl");
-
-        clReleaseEvent(params_ev);
-        clReleaseEvent(bias_event);
     }
 
     //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
@@ -673,22 +676,12 @@ namespace fpga
 
     net_fpga::~net_fpga()
     {
-        net_fpga_counter--;
+        g_net_fpga_counter--;
 
-        if (net_fpga_counter == 0)
+        if (g_net_fpga_counter == 0)
         {
             cleanup();
-            // if (kernel)
-            //     clReleaseKernel(kernel);
-            // if (program)
-            //     clReleaseProgram(program);
-            // if (queue)
-            //     clReleaseCommandQueue(queue);
-            // if (context)
-            //     clReleaseContext(context);
-
-            program_init = false;
-            forward_kernel_init = false;
+            g_program_loaded = NOT_LOADED;
         }
 
         delete[] n_p_l;
@@ -711,27 +704,21 @@ void cleanup()
         clReleaseCommandQueue(fpga::g_queue_out);
     if (fpga::g_context)
         clReleaseContext(fpga::g_context);
-    clReleaseEvent(fpga::g_init_event);
-    clReleaseEvent(fpga::g_finish_event);
 
     for (int i = 0; i<BATCH_SIZE; i++)
     {
-        clReleaseEvent(fpga::g_im_init_event[i]);
-        clReleaseEvent(fpga::g_im_finish_event[i]);
-        clReleaseEvent(fpga::g_im_read_event[i]);
-    }
-
-    if (fpga::g_are_images_init)
-    {
-        for (int i = 0; i < BATCH_SIZE; i++)
+        if(fpga::g_im_init_event[i])
         {
-            delete[] fpga::g_in_images[i];
-            delete[] fpga::g_out_images[i];
-            fpga::g_in_images[i] = NULL;
-            fpga::g_out_images[i] = NULL;
+            clReleaseEvent(fpga::g_im_init_event[i]);
+            clReleaseEvent(fpga::g_im_finish_event[i]);
+            clReleaseEvent(fpga::g_im_read_event[i]);
         }
-        // delete[] fpga::g_in_images;
-        // delete[] fpga::g_out_images;
-        fpga::g_are_images_init = false;
+    }
+    for (int i = 0; i < BATCH_SIZE; i++)
+    {
+        delete[] fpga::g_in_images[i];
+        delete[] fpga::g_out_images[i];
+        fpga::g_in_images[i] = NULL;
+        fpga::g_out_images[i] = NULL;
     }
 }
