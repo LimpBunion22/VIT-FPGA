@@ -80,7 +80,7 @@ namespace fpga
 
         //1000x1000
         void process_img_1000_1000(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
-        net::image_set get_img_1000_1000();
+        std::vector<float> get_img_1000_1000();
 
         // public:
         //     friend void cleanup();

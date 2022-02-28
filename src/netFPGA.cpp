@@ -389,13 +389,15 @@ namespace fpga
         }
     }
 
-    net::image_set net_fpga::get_img_1000_1000()
+    std::vector<float> net_fpga::get_img_1000_1000()
     {
         // net::image_set out_image;
-        out_image.original_x_pos = 0;
-        out_image.original_y_pos = 0;
-        out_image.original_h = 1000;
-        out_image.original_w = 1000;
+        // out_image.original_x_pos = 0;
+        // out_image.original_y_pos = 0;
+        // out_image.original_h = 1000;
+        // out_image.original_w = 1000;
+        vector <float>out_vec_img;
+        out_vec_img.reserve(P1000x1000);
 
         if (g_free_batch < BATCH_SIZE)
         {
@@ -403,7 +405,8 @@ namespace fpga
             clWaitForEvents(1, &(g_im_read_event[g_rd_batch_cnt]));
 
             for (int i = 0; i < P1000x1000 ; i++)
-                out_image.resized_image_data[i] = g_out_images[g_rd_batch_cnt][i];
+                out_vec_img.push_back((float)g_out_images[g_rd_batch_cnt][i]);
+                // out_image.resized_image_data[i] = g_out_images[g_rd_batch_cnt][i];
 
             g_rd_batch_cnt = g_rd_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_rd_batch_cnt + 1;
             // cout << "Datos leidos\n";
@@ -413,7 +416,7 @@ namespace fpga
             cout << "PILA VACIA\n";
         }
         // cout << out_image.resized_image_data.size() << "\n";
-        return out_image;
+        return out_vec_img;
     }
 
     void net_fpga::_init_program(std::string prg_name, int net_kind, int pxl_count)
