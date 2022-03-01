@@ -38,9 +38,9 @@ namespace fpga
         int n_neurons;
         int n_params;
 
-        DATA_TYPE *params;
+        float *params;
         int activations;
-        DATA_TYPE *bias;
+        float *bias;
 
         int n_sets;
         bool gradient_init;
@@ -52,7 +52,7 @@ namespace fpga
         // void * (*clMapHostPipeIntelFPGA) (cl_mem, cl_map_flags, size_t, size_t *, cl_int *);
         // cl_int (*clUnmapHostPipeIntelFPGA) (cl_mem, void *, size_t, size_t *);
     private:
-        net_fpga() = delete;
+        // net_fpga() = delete;
         void _init_program(std::string prg_name, int net_kind, int pxl_count = 0);
         void _init_nn_kernels();
         void _init_img_kernels(int pxl_count);
@@ -61,15 +61,16 @@ namespace fpga
 
     public:
         ~net_fpga();
-        net_fpga(const net::net_data &data, bool derivate, bool random); //* net::net_data como copia para mantener operaciones move
+        net_fpga();
+        net_fpga(const net::net_data &data, bool random); //* net::net_data como copia para mantener operaciones move
         net_fpga(net_fpga &&rh);
         net_fpga &operator=(net_fpga &&rh);
         net_fpga &operator=(const net_fpga &rh);
 
         net::net_data get_net_data() override;
-        std::vector<DATA_TYPE> launch_forward(const std::vector<DATA_TYPE> &inputs) override;
+        std::vector<float> launch_forward(const std::vector<float> &inputs) override;
         void init_gradient(const net::net_sets &sets) override;
-        std::vector<DATA_TYPE> launch_gradient(size_t iterations, DATA_TYPE error_threshold, DATA_TYPE multiplier) override;
+        std::vector<float> launch_gradient(size_t iterations, float error_threshold, float multiplier) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;

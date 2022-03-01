@@ -63,8 +63,8 @@ namespace fpga
     cl_event g_im_read_event[BATCH_SIZE] = {nullptr};
 
     //NN buff variables
-    DATA_TYPE *g_inputs_buff = NULL;
-    DATA_TYPE *g_oputputs_buff = NULL;
+    float *g_inputs_buff = NULL;
+    float *g_oputputs_buff = NULL;
 
     //Batch variables
     int g_wr_batch_cnt = 0;
@@ -75,7 +75,18 @@ namespace fpga
     unsigned char *g_in_images[BATCH_SIZE] = {nullptr};
     unsigned char *g_out_images[BATCH_SIZE] = {nullptr};
 
-    net_fpga::net_fpga(const net::net_data &data, bool derivate, bool random)
+    net_fpga::net_fpga()
+    {
+        auto t = std::time(nullptr);
+        auto tm = *std::localtime(&t);
+        ostringstream oss;
+        oss << put_time(&tm, "%d-%m-%Y %H-%M-%S");
+        net_ident = oss.str();
+         
+        g_net_fpga_counter++;
+    }
+
+    net_fpga::net_fpga(const net::net_data &data, bool random)
         : n_layers(data.n_p_l.size()), n_sets(0), gradient_init(false), gradient_performance(0), forward_performance(0), n_ins(data.n_ins)
 
     {
@@ -230,7 +241,7 @@ namespace fpga
         for (int i = 0; i < n_layers; i++){
             data.n_p_l[i] = n_p_l[i];
             int n_params = (i == 0) ? n_ins : n_p_l[i - 1];
-            data.params.emplace_back(n_p_l[i], vector<DATA_TYPE>(n_params));
+            data.params.emplace_back(n_p_l[i], vector<float>(n_params));
             data.bias.emplace_back(n_p_l[i]);
 
             for (int j = 0; j < n_p_l[i]; j++){
@@ -246,7 +257,7 @@ namespace fpga
         return data;
     }
 
-    vector<DATA_TYPE> net_fpga::launch_forward(const vector<DATA_TYPE> &inputs) //* returns result
+    vector<float> net_fpga::launch_forward(const vector<float> &inputs) //* returns result
     {
         // cout << "FPGA NET: FORWARD\n";
         if (g_program_loaded != NN_DNN1)        
@@ -263,13 +274,13 @@ namespace fpga
         for (int i = 0; i < n_ins; i++)
             g_inputs_buff[i] = inputs[i];
 
-        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn, CL_FALSE, 0, n_ins * sizeof(DATA_TYPE), g_inputs_buff, 0, NULL, NULL);
+        g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_nn, CL_FALSE, 0, n_ins * sizeof(float), g_inputs_buff, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue inputs");
         g_err = clEnqueueTask(g_queue_in, g_kernel_in, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue task");
 
-        std::vector<DATA_TYPE> vec_out(n_p_l[n_layers - 1]);
-        g_err = clEnqueueReadBuffer(g_queue_in, g_clmem_out_nn, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(DATA_TYPE), g_oputputs_buff, 0, NULL, NULL);
+        std::vector<float> vec_out(n_p_l[n_layers - 1]);
+        g_err = clEnqueueReadBuffer(g_queue_in, g_clmem_out_nn, CL_TRUE, 0, n_p_l[n_layers - 1] * sizeof(float), g_oputputs_buff, 0, NULL, NULL);
         checkError(g_err, "Failed to enqueue read outs");
 
 #ifdef PERFORMANCE
@@ -472,10 +483,10 @@ namespace fpga
     void net_fpga::_init_nn_kernels()
     {
         int n_bytes_npl = n_layers * sizeof(int);
-        int n_bytes_inputs = n_ins * sizeof(DATA_TYPE);
-        int n_bytes_params = n_params * sizeof(DATA_TYPE);
-        int n_bytes_bias = n_neurons * sizeof(DATA_TYPE);
-        int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
+        int n_bytes_inputs = n_ins * sizeof(float);
+        int n_bytes_params = n_params * sizeof(float);
+        int n_bytes_bias = n_neurons * sizeof(float);
+        int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(float);
 
         // cout << "   Creating buffers:\n";
         g_clmem_in_nn = clCreateBuffer(g_context, CL_MEM_READ_ONLY, n_bytes_inputs, NULL, &g_err); //CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY
@@ -559,14 +570,14 @@ namespace fpga
         delete[] g_inputs_buff;
         delete[] g_oputputs_buff;
 
-        g_inputs_buff = new DATA_TYPE[n_ins];
-        g_oputputs_buff = new DATA_TYPE[n_p_l[n_layers - 1]];
+        g_inputs_buff = new float[n_ins];
+        g_oputputs_buff = new float[n_p_l[n_layers - 1]];
 
         int n_bytes_npl = n_layers * sizeof(int);
-        int n_bytes_inputs = n_ins * sizeof(DATA_TYPE);
-        int n_bytes_params = n_params * sizeof(DATA_TYPE);
-        int n_bytes_bias = n_neurons * sizeof(DATA_TYPE);
-        int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(DATA_TYPE);
+        int n_bytes_inputs = n_ins * sizeof(float);
+        int n_bytes_params = n_params * sizeof(float);
+        int n_bytes_bias = n_neurons * sizeof(float);
+        int n_bytes_outs = n_p_l[n_layers - 1] * sizeof(float);
 
         g_err = clSetKernelArg(g_kernel_in, 5, sizeof(cl_int), (void *)&n_layers);
         checkError(g_err, "Failed to set arg n_layers");
@@ -581,7 +592,7 @@ namespace fpga
         checkError(g_err, "Failed to launch enqueue npl");
     }
 
-    //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
+    //^ HANDLER + IMPLEMENfloatACIÓN (REVISAR MOVE OP)
     void net_fpga::init_gradient(const net::net_sets &sets)
     {
         // if (!gradient_init)
@@ -608,15 +619,15 @@ namespace fpga
         //     // cout << "gradient already init!\n";
     }
 
-    //^ HANDLER + IMPLEMENDATA_TYPEACIÓN (REVISAR MOVE OP)
-    vector<DATA_TYPE> net_fpga::launch_gradient(size_t iterations, DATA_TYPE error_threshold, DATA_TYPE multiplier) //* returns it times errors
+    //^ HANDLER + IMPLEMENfloatACIÓN (REVISAR MOVE OP)
+    vector<float> net_fpga::launch_gradient(size_t iterations, float error_threshold, float multiplier) //* returns it times errors
     {
         //         if (gradient_init)
         //         {
         // #ifdef PERFORMANCE
         //             auto start = high_resolution_clock::now();
         // #endif
-        //             vector<DATA_TYPE> set_errors(iterations, 0);
+        //             vector<float> set_errors(iterations, 0);
         //             my_vec set_single_errors(acum_pos, CERO);
 
         //             for (size_t i = 0; i < iterations; i++)
@@ -642,7 +653,7 @@ namespace fpga
         //         else
         //         {
         //             // cout << "initialize gradient!\n";
-        return vector<DATA_TYPE>(iterations, 0);
+        return vector<float>(iterations, 0);
         // }
     }
 
