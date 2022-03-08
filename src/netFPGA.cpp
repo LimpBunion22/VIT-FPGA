@@ -14,6 +14,7 @@
 #define BATCH_SIZE 24
 #define P1920x1080 1920*1080
 #define P1000x1000 1000*1000
+#define P100x100 100*100
 
 namespace fpga
 {
@@ -75,7 +76,7 @@ namespace fpga
     unsigned char *g_in_images[BATCH_SIZE] = {nullptr};
     unsigned char *g_out_images[BATCH_SIZE] = {nullptr};
 
-    net_fpga::net_fpga()
+    net_fpga::net_fpga(): n_p_l(nullptr),params(nullptr),bias(nullptr)
     {
         auto t = std::time(nullptr);
         auto tm = *std::localtime(&t);
@@ -429,6 +430,71 @@ namespace fpga
         // cout << out_image.resized_image_data.size() << "\n";
         return out_vec_img;
     }
+    
+    void net_fpga::process_img_1000_1000_dwz10(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image)
+    {
+        // cout << "FPGA NET: FORWARD\n";
+        if (g_program_loaded != IMG_1000x1000TO100x100)        
+            net_fpga::_init_program(IMG_1000x1000TO100x100, IMG, P1000x1000);
+            // cout << "FPGA NET: PROGRAM CREATED\n";
+
+        if (g_free_batch > 0)
+        {
+            g_free_batch--;
+
+            // cout << "Enqueuing image in\n";
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_red, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), red_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_green, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), green_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue inputs");
+            g_err = clEnqueueWriteBuffer(g_queue_in, g_clmem_in_img_blue, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), blue_image, 1, &(g_im_finish_event[g_wr_batch_cnt]), &(g_im_init_event[g_wr_batch_cnt]));
+            checkError(g_err, "Failed to enqueue inputs");
+          
+            int next_wr_batch = g_wr_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_wr_batch_cnt + 1;
+            // cout << "Enqueuing image in kernel\n";
+            g_err = clEnqueueTask(g_queue_in, g_kernel_in, 1, &(g_im_init_event[g_wr_batch_cnt]), NULL);
+            checkError(g_err, "Failed to enqueue task");
+
+            // cout << "Enqueuing image out kernel\n";
+            g_err = clEnqueueTask(g_queue_out, g_kernel_out, 1, &(g_im_init_event[g_wr_batch_cnt]), &(g_im_finish_event[next_wr_batch]));
+            checkError(g_err, "Failed to enqueue task");
+
+            // cout << "Enqueuing image out\n";
+            g_err = clEnqueueReadBuffer(g_queue_out, g_clmem_out_nn, CL_FALSE, 0, P1000x1000*sizeof(unsigned char), g_out_images[g_wr_batch_cnt], 1, &(g_im_finish_event[next_wr_batch]), &(g_im_read_event[g_wr_batch_cnt]));
+            checkError(g_err, "Failed to enqueue read outs");
+            g_wr_batch_cnt = next_wr_batch;
+            // cout << "Leaving fpga code\n";
+        }
+        else
+        {
+            cout << "PILA LLENA\n";
+        }
+    }
+
+    std::vector<float> net_fpga::get_img_100_100()
+    {
+        vector <float>out_vec_img;
+        out_vec_img.reserve(P100x100);
+
+        if (g_free_batch < BATCH_SIZE)
+        {
+            g_free_batch++;
+            clWaitForEvents(1, &(g_im_read_event[g_rd_batch_cnt]));
+
+            for (int i = 0; i < P100x100 ; i++)
+                out_vec_img.push_back(((float)g_out_images[g_rd_batch_cnt][i])/255);
+                // out_image.resized_image_data[i] = g_out_images[g_rd_batch_cnt][i];
+
+            g_rd_batch_cnt = g_rd_batch_cnt == (BATCH_SIZE - 1) ? 0 : g_rd_batch_cnt + 1;
+            // cout << "Datos leidos\n";
+        }
+        else
+        {
+            cout << "PILA VACIA\n";
+        }
+        // cout << out_image.resized_image_data.size() << "\n";
+        return out_vec_img;
+    }
 
     void net_fpga::_init_program(std::string prg_name, int net_kind, int pxl_count)
     {    
@@ -690,17 +756,21 @@ namespace fpga
 
     net_fpga::~net_fpga()
     {
+        // cout << "Deleting FPGA\n";
         g_net_fpga_counter--;
 
         if (g_net_fpga_counter == 0)
         {
+            // cout << "Deleting opencl stuff\n";
             cleanup();
             g_program_loaded = NOT_LOADED;
         }
 
+        // cout << "Deleting net pointers\n";
         delete[] n_p_l;
         delete[] params;
         delete[] bias;
+        // cout << "FPGA deleted\n";
     }
 }
 
@@ -728,6 +798,7 @@ void cleanup()
             clReleaseEvent(fpga::g_im_read_event[i]);
         }
     }
+    // std::cout <<"Deleting image pointers\n";
     for (int i = 0; i < BATCH_SIZE; i++)
     {
         delete[] fpga::g_in_images[i];

@@ -25,6 +25,7 @@ namespace net
 {
     constexpr int RELU2 = 0;
     constexpr int SIGMOID = 1;
+    constexpr int RELU2_SOFT_MAX = 2;
 
     typedef struct
     {

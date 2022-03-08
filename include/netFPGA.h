@@ -16,6 +16,7 @@
 #define NN_DNN1 "PRG_DNN_V1"
 #define IMG_1920x1080 "PRG_IMG_1920x1080"
 #define IMG_1000x1000 "PRG_IMG_1000x1000"
+#define IMG_1000x1000TO100x100 "PRG_IMG_1000x1000TO100x100"
 
 //Kernels de los programas
 #define NN_DNN1_KERNEL "network_v1"
@@ -82,6 +83,10 @@ namespace fpga
         //1000x1000
         void process_img_1000_1000(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
         std::vector<float> get_img_1000_1000();
+
+        //1000x1000 TO 100x100
+        void process_img_1000_1000_dwz10(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
+        std::vector<float> get_img_100_100();
 
         // public:
         //     friend void cleanup();
