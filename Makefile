@@ -83,7 +83,7 @@ LIB_DIRS :=
 INCS := $(wildcard )
 SRCS := $(wildcard src/*.cpp ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/src/AOCLUtils/*.cpp)
 LIBS := rt pthread
-OBJ_COMPILE :=  netFPGA.o#$(patsubst %.cpp,%.o,$(SRCS))#$(SRCS:.cpp=.o)
+OBJ_COMPILE :=  netFPGA.o fpgaHandler.o#$(patsubst %.cpp,%.o,$(SRCS))#$(SRCS:.cpp=.o)
 OTHERS_OBJ := opencl.o options.o
 $(info    OBJ is $(OBJ_COMPILE))
 

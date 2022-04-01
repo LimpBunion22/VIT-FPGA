@@ -2,9 +2,8 @@
 #define NETFPGA_H
 
 #include <netAbstract.h>
+#include <fpgaHandler.h>
 #include <chrono>
-#include "CL/cl.hpp"
-#include "AOCLUtils/aocl_utils.h"
 
 //Modos de programa de la FPGA
 #define NN 0
@@ -34,14 +33,15 @@ namespace fpga
 
         //Net variables
         int n_ins;
+        int n_outs;
         int n_layers;
         int *n_p_l;
         int n_neurons;
         int n_params;
 
-        float *params;
+        int *params;
         int activations;
-        float *bias;
+        int *bias;
 
         int n_sets;
         bool gradient_init;
@@ -49,18 +49,13 @@ namespace fpga
         int64_t gradient_performance;
         int64_t forward_performance;
 
-        
-        // void * (*clMapHostPipeIntelFPGA) (cl_mem, cl_map_flags, size_t, size_t *, cl_int *);
-        // cl_int (*clUnmapHostPipeIntelFPGA) (cl_mem, void *, size_t, size_t *);
     private:
-        // net_fpga() = delete;
-        void _init_program(std::string prg_name, int net_kind, int pxl_count = 0);
-        void _init_nn_kernels();
-        void _init_img_kernels(int pxl_count);
-        void _load_params();
-        // void _load_params(const net::image_set &set);
+
+        fpga::fpga_handler* master = nullptr;
+        int identifier = 0;
 
     public:
+
         ~net_fpga();
         net_fpga();
         net_fpga(const net::net_data &data, bool random); //* net::net_data como copia para mantener operaciones move
@@ -69,27 +64,16 @@ namespace fpga
         net_fpga &operator=(const net_fpga &rh);
 
         net::net_data get_net_data() override;
+
         std::vector<float> launch_forward(const std::vector<float> &inputs) override;
-        void init_gradient(const net::net_sets &sets) override;
+        void enqueue_net(const std::vector<float> &inputs);
+        void solve_pack();
+        std::vector<float>  read_net();
+        
         std::vector<float> launch_gradient(size_t iterations, float error_threshold, float multiplier) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;
-        
-        //1920x1080
-        void process_img_1920_1080(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
-        net::image_set get_img_1920_1080();
-
-        //1000x1000
-        void process_img_1000_1000(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
-        std::vector<float> get_img_1000_1000();
-
-        //1000x1000 TO 100x100
-        void process_img_1000_1000_dwz10(unsigned char* red_image, unsigned char* green_image,unsigned char* blue_image);
-        std::vector<float> get_img_100_100();
-
-        // public:
-        //     friend void cleanup();
     };
 }
 
