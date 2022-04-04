@@ -1,5 +1,5 @@
-#ifndef NETHANDLER_H
-#define NETHANDLER_H
+#ifndef NET_FPGA_HANDLER_H
+#define NET_FPGA_HANDLER_H
 
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"

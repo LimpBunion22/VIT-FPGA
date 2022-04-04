@@ -54,7 +54,7 @@ namespace fpga
 
     private:
 
-        fpga::fpga_handler* master = nullptr;
+        fpga_handler* master = nullptr;
         fpga_data get_fpga_data();
         int identifier = 0;
 
@@ -62,6 +62,7 @@ namespace fpga
 
         ~net_fpga();
         net_fpga();
+        net_fpga(size_t n_ins, const std::vector<size_t> &n_p_l, const std::vector<int> &activation_type);
         net_fpga(const net::net_data &data, bool random); //* net::net_data como copia para mantener operaciones move
         net_fpga(net_fpga &&rh);
         net_fpga &operator=(net_fpga &&rh);
@@ -74,7 +75,15 @@ namespace fpga
         void solve_pack();
         std::vector<float>  read_net();
         
-        std::vector<float> launch_gradient(size_t iterations, float error_threshold, float multiplier) override;
+        std::vector<float> launch_gradient(const net::net_sets &sets,
+                                                   size_t iterations,
+                                                   size_t batch_size,
+                                                   float alpha,
+                                                   float alpha_decay,
+                                                   float lambda,
+                                                   float error_threshold,
+                                                   int norm,
+                                                   size_t dropout_interval) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;

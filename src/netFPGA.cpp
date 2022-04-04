@@ -23,11 +23,39 @@ namespace fpga
         net_ident = oss.str();
     }
 
+    net_fpga::net_fpga(size_t n_ins, const vector<size_t> &n_p_l, const vector<int> &activation_type){
+        net_fpga();
+
+        n_layers = n_p_l.size();
+        this->n_ins = n_ins%N_INS==0 ? n_ins : n_ins + (N_INS-n_ins%N_INS);
+        n_outs = n_p_l[n_layers-1];
+        this->n_p_l.reserve(n_layers);
+        n_neurons = 0;
+        n_params = 0;
+
+        for (int i = 0; i < n_layers; i++){
+            this->n_p_l.emplace_back(n_p_l[i]%N_NEURONS==0 ? n_p_l[i] : n_p_l[i] + (N_NEURONS-n_p_l[i]%N_NEURONS));
+            n_neurons += n_p_l[i];
+            if (i == 0)
+                n_params += n_p_l[i] * n_ins;
+            else
+                n_params += n_p_l[i] * n_p_l[i - 1];
+        }
+
+        params.reserve(n_params);
+        activations = 1; // 1 -> RELU2
+        bias.reserve(n_neurons);
+
+        for (int i = 0; i < n_params; i++)
+            params.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
+        for (int i = 0; i < n_neurons; i++)
+            bias.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
+    }
+
     net_fpga::net_fpga(const net::net_data &data, bool random)
         : n_layers(data.n_p_l.size()), n_sets(0), gradient_init(false), gradient_performance(0), forward_performance(0)
 
     {
-
         auto t = std::time(nullptr);
         auto tm = *std::localtime(&t);
         ostringstream oss;
@@ -257,7 +285,15 @@ namespace fpga
     }
 
     //^ HANDLER + IMPLEMENfloatACIÓN (REVISAR MOVE OP)
-    vector<float> net_fpga::launch_gradient(size_t iterations, float error_threshold, float multiplier) //* returns it times errors
+    vector<float> net_fpga::launch_gradient(const net::net_sets &sets,
+                                                   size_t iterations,
+                                                   size_t batch_size,
+                                                   float alpha,
+                                                   float alpha_decay,
+                                                   float lambda,
+                                                   float error_threshold,
+                                                   int norm,
+                                                   size_t dropout_interval) //* returns it times errors
     {
         //         if (gradient_init)
         //         {
