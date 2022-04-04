@@ -70,8 +70,8 @@ namespace fpga
 
         net::net_data get_net_data() override;
         std::vector<float> launch_forward(const std::vector<float> &inputs) override;
-        void init_gradient(const net::net_sets &sets) override;
-        std::vector<float> launch_gradient(size_t iterations, float error_threshold, float multiplier) override;
+        std::vector<float> launch_gradient(const net::net_sets &sets, size_t iterations, size_t batch_size,
+                                                   float alpha, float alpha_decay, float lambda, float error_threshold, int norm) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;

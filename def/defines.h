@@ -26,13 +26,22 @@ namespace net
     constexpr int RELU2 = 0;
     constexpr int SIGMOID = 1;
     constexpr int RELU2_SOFT_MAX = 2;
+    constexpr size_t FULL_BATCH = 0;
+    constexpr int NO_NORM_REG = -1;
+    constexpr int REG_ONLY = 0;
+    constexpr int NORM_0 = 1;
+    constexpr int NORM_1 = 2;
+    constexpr int NORM_2 = 3;
+    constexpr int NORM_REG_0 = 4;
+    constexpr int NORM_REG_1 = 5;
+    constexpr int NORM_REG_2 = 6;
 
     typedef struct
     {
         size_t n_ins;
         size_t n_layers;
         std::vector<size_t> n_p_l;
-        std::vector<std::vector<std::vector<float>>> params;
+        std::vector<std::vector<float>> params;
         std::vector<std::vector<float>> bias;
         std::vector<int> activation_type; //* valor numérico que indica qué función usar por capa
     } net_data;
