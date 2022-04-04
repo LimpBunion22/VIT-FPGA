@@ -23,7 +23,8 @@
 #define IMG_OUT_BORDERS_KERNEL "image_borders"
 
 namespace fpga
-{
+{  
+
     class net_fpga : public net::net_abstract
     {
         
@@ -35,13 +36,13 @@ namespace fpga
         int n_ins;
         int n_outs;
         int n_layers;
-        int *n_p_l;
+        std::vector <int> n_p_l;
         int n_neurons;
         int n_params;
 
-        int *params;
+        std::vector <int> params;
         int activations;
-        int *bias;
+        std::vector <int> bias;
 
         int n_sets;
         bool gradient_init;
@@ -49,9 +50,12 @@ namespace fpga
         int64_t gradient_performance;
         int64_t forward_performance;
 
+        fpga_data my_data;
+
     private:
 
         fpga::fpga_handler* master = nullptr;
+        fpga_data get_fpga_data();
         int identifier = 0;
 
     public:

@@ -1,5 +1,4 @@
 #include "fpgaHandler.h"
-#include <netFPGA.h>
 // #include <math.h>
 #include <algorithm>
 #include <iostream>
@@ -22,7 +21,6 @@
 using namespace std;
 using namespace fpga;
 using namespace aocl_utils;
-using namespace chrono;
 
 bool fpga_handler::there_is_a_handler = false;
 
@@ -52,6 +50,7 @@ void fpga_handler::enqueue_image(std::string prg_name, std::vector<unsigned char
 bool fpga_handler::check_img_ready()
 {
     cout << "Images not implemented yet\n";
+    return false;
 }
 
 void fpga_handler::read_image(std::vector<unsigned char> out_image)
@@ -59,11 +58,11 @@ void fpga_handler::read_image(std::vector<unsigned char> out_image)
     cout << "Images not implemented yet\n";
 }
 
-int fpga_handler::enqueue_net(net_fpga *in_net, std::vector<int> &inputs, bool reload, bool same_in, bool big_nets)
+int fpga_handler::enqueue_net(fpga_data & in_net, std::vector<int> &inputs, bool reload, bool same_in, bool big_nets)
 {
     shared_in = same_in;
-    int max_neurons = *max_element(in_net->n_p_l, in_net->n_p_l + in_net->n_layers - 1);
-    int inout_max = max(in_net->n_ins, max_neurons);
+    int max_neurons = *max_element(in_net.n_p_l, in_net.n_p_l + in_net.n_layers - 1);
+    int inout_max = max(in_net.n_ins, max_neurons);
 
     if (inout_net_free_mem > inout_max || reload == false)
     {
@@ -83,7 +82,7 @@ int fpga_handler::enqueue_net(net_fpga *in_net, std::vector<int> &inputs, bool r
             // Espacio reservado en los buffers de la fpga
             net_list[nets_enqueued].inout_mem_res = inout_max;
 
-            if (big_nets || params_net_free_mem < in_net->n_params || bias_net_free_mem < in_net->n_neurons)
+            if (big_nets || params_net_free_mem < in_net.n_params || bias_net_free_mem < in_net.n_neurons)
             {
                 net_list[nets_enqueued].big_net = true;
                 net_list[nets_enqueued].params_mem_res = N_NEURONS * 2 * inout_max;
@@ -92,8 +91,8 @@ int fpga_handler::enqueue_net(net_fpga *in_net, std::vector<int> &inputs, bool r
             else
             {
                 net_list[nets_enqueued].big_net = false;
-                net_list[nets_enqueued].params_mem_res = in_net->n_params;
-                net_list[nets_enqueued].bias_mem_res = in_net->n_neurons;
+                net_list[nets_enqueued].params_mem_res = in_net.n_params;
+                net_list[nets_enqueued].bias_mem_res = in_net.n_neurons;
             }
         }
 
@@ -109,15 +108,15 @@ int fpga_handler::enqueue_net(net_fpga *in_net, std::vector<int> &inputs, bool r
             net_list[nets_enqueued].loaded = false;
             if (same_in == false)
             {
-                err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, net_list[nets_enqueued].in_out_base, in_net->n_ins, inputs.data(), 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
+                err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, net_list[nets_enqueued].in_out_base, in_net.n_ins, inputs.data(), 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
                 checkError(err, "Failed to enqueue inputs");
-                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, net_list[nets_enqueued].params_base, in_net->n_ins*N_NEURONS, in_net->params, 0, NULL, NULL);
+                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, net_list[nets_enqueued].params_base, in_net.n_ins*N_NEURONS, in_net.params, 0, NULL, NULL);
             }
             else
-                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, net_list[nets_enqueued].params_base, in_net->n_ins*N_NEURONS, in_net->params, 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
+                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, net_list[nets_enqueued].params_base, in_net.n_ins*N_NEURONS, in_net.params, 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
 
             checkError(err, "Failed to enqueue params");
-            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, net_list[nets_enqueued].bias_base, net_list[nets_enqueued].bias_mem_res / 2, in_net->bias, 0, NULL, NULL);
+            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, net_list[nets_enqueued].bias_base, net_list[nets_enqueued].bias_mem_res / 2, in_net.bias, 0, NULL, NULL);
             checkError(err, "Failed to enqueue bias");
         }
         else
@@ -125,13 +124,13 @@ int fpga_handler::enqueue_net(net_fpga *in_net, std::vector<int> &inputs, bool r
             net_list[nets_enqueued].loaded = true;
             if (same_in == false)
             {
-                err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, net_list[nets_enqueued].in_out_base, in_net->n_ins, inputs.data(), 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
+                err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, net_list[nets_enqueued].in_out_base, in_net.n_ins, inputs.data(), 1, &(rd_events[net_list[nets_enqueued].rd_event]), NULL);
                 checkError(err, "Failed to enqueue inputs");
             }
         }
 
         int ins_dir = same_in ?  net_list[0].in_out_base : net_list[nets_enqueued].in_out_base;
-        vector<int> configuration = {in_net->n_ins, ins_dir, net_list[nets_enqueued].in_out_base+NET_INOUT_BUF_SIZE/2, net_list[nets_enqueued].params_base, net_list[nets_enqueued].bias_base};
+        vector<int> configuration = {in_net.n_ins, ins_dir, net_list[nets_enqueued].in_out_base+NET_INOUT_BUF_SIZE/2, net_list[nets_enqueued].params_base, net_list[nets_enqueued].bias_base};
         err = clEnqueueWriteBuffer(wr_queue, configuration_dev, CL_FALSE, 0, 5, configuration.data(), 0, NULL, &(wr_events[next_ev]));
         checkError(err, "Failed to enqueue inputs");
         wr_ev_ind = next_ev;
@@ -166,34 +165,34 @@ void fpga_handler::solve_nets()
         int pck_cnt = 0;      
 
         //Recorre las capas
-        for(int l=0; l<net_list[i].net->n_layers; l++){
+        for(int l=0; l<net_list[i].net.n_layers; l++){
             
             int n_ins, ins_dir, outs_dir;
 
             if(l==0){
-                n_ins = net_list[i].net->n_ins;
+                n_ins = net_list[i].net.n_ins;
                 ins_dir = shared_in ?  net_list[0].in_out_base : net_list[i].in_out_base;  
                 outs_dir = net_list[0].in_out_base + NET_INOUT_BUF_SIZE/2;
             }
             else{
-                n_ins = net_list[i].net->n_p_l[l-1];
+                n_ins = net_list[i].net.n_p_l[l-1];
                 ins_dir = l%2==0 ? net_list[0].in_out_base : net_list[0].in_out_base+NET_INOUT_BUF_SIZE/2;
                 outs_dir = l%2==0 ? net_list[0].in_out_base + NET_INOUT_BUF_SIZE/2 : net_list[0].in_out_base;
             }
 
             //Recorre los packs de ejecucción
-            for (int p = l==0?1:0; p < net_list[i].net->n_p_l[0] / N_NEURONS; p++)
+            for (int p = l==0?1:0; p < net_list[i].net.n_p_l[0] / N_NEURONS; p++)
             {       
-                int n_params = l==0 ? net_list[i].net->n_ins*N_NEURONS : net_list[i].net->n_p_l[l-1]*N_NEURONS;             
+                int n_params = l==0 ? net_list[i].net.n_ins*N_NEURONS : net_list[i].net.n_p_l[l-1]*N_NEURONS;             
                 int next_ev = wr_ev_ind == MAX_SZ_ENQUEUE - 1 ? 0 : wr_ev_ind++;
 
                 //Enqueue de bias y parametros
                 if(!net_list[i].loaded && (net_list[i].big_net || pck_cnt == 0)){
                     int params_dir = pck_cnt%2==0 ? net_list[i].params_base : net_list[i].params_base + net_list[i].params_mem_res/2;
-                    err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_dir, n_params,  net_list[i].net->params, 0, NULL, NULL);
+                    err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_dir, n_params,  net_list[i].net.params, 0, NULL, NULL);
                     checkError(err, "Failed to enqueue params");
                     int bias_dir = pck_cnt%2==0 ? net_list[i].bias_base : net_list[i].bias_base + net_list[i].bias_mem_res/2;
-                    err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_dir, N_NEURONS, net_list[i].net->bias, 0, NULL, NULL);
+                    err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_dir, N_NEURONS, net_list[i].net.bias, 0, NULL, NULL);
                     checkError(err, "Failed to enqueue bias");
                 } 
                 
@@ -234,7 +233,7 @@ void fpga_handler::solve_nets()
 std::vector<int> fpga_handler::read_net(int identifier){
     
     int id = identifier-1;
-    int n_outs = net_list[id].net->n_p_l[net_list[id].net->n_layers-1];
+    int n_outs = net_list[id].net.n_p_l[net_list[id].net.n_layers-1];
     vector<int> outs(n_outs,0);
     int next_ev = rd_ev_ind == MAX_SZ_ENQUEUE - 1 ? 0 : rd_ev_ind++;
 
@@ -249,6 +248,8 @@ std::vector<int> fpga_handler::read_net(int identifier){
     params_net_free_mem -= net_list[id].params_mem_res;
     bias_net_free_mem -= net_list[id].bias_mem_res;
     nets_enqueued--;
+
+    return outs;
 }
 
 void fpga_handler::_cleanup()

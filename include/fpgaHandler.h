@@ -3,7 +3,9 @@
 
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
-#include "netFPGA.h"
+#include "defines.h"
+
+#define fpga_verbose 0
 
 // Configuration: [n_ins, in_dir, out_dir, params_dir, bias_dir]
 #define N_INS 6
@@ -19,9 +21,21 @@ using namespace aocl_utils;
 
 namespace fpga{
 
+typedef struct
+{
+    int n_ins;
+    int n_layers;
+    int n_params;
+    int n_neurons;
+    int* n_p_l;
+    int* params;
+    int* bias;
+    // std::vector<int> activation_type; //* valor numérico que indica qué función usar por capa
+} fpga_data;
+
 typedef struct 
 {
-    fpga::net_fpga* net = nullptr;    
+    fpga_data net;    
     bool big_net = false;
 
     bool enqueued = false;
@@ -109,7 +123,7 @@ class fpga_handler{
         fpga_handler();
 
         void enqueue_image(std::string prg_name, std::vector<unsigned char> &in_image);//No bloqueante
-        int enqueue_net(fpga::net_fpga* in_net, std::vector<int> &inputs, bool reload = true, bool same_in = false, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
+        int enqueue_net(fpga_data & in_net, std::vector<int> &inputs, bool reload = true, bool same_in = false, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
 
         bool check_img_ready();
 
