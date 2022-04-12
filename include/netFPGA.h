@@ -40,9 +40,9 @@ namespace fpga
         int n_neurons;
         int n_params;
 
-        std::vector <int> params;
+        std::vector <long int> params;
         int activations;
-        std::vector <int> bias;
+        std::vector <long int> bias;
 
         int n_sets;
         bool gradient_init;
@@ -54,16 +54,16 @@ namespace fpga
 
     private:
 
-        fpga_handler* master = nullptr;
+        fpga_handler& master;
         fpga_data get_fpga_data();
         int identifier = 0;
 
     public:
 
         ~net_fpga();
-        net_fpga();
-        net_fpga(size_t n_ins, const std::vector<size_t> &n_p_l, const std::vector<int> &activation_type);
-        net_fpga(const net::net_data &data, bool random); //* net::net_data como copia para mantener operaciones move
+        net_fpga(fpga_handler& handler);
+        net_fpga(size_t n_ins, const std::vector<size_t> &n_p_l, const std::vector<int> &activation_type, fpga_handler& handler);
+        net_fpga(const net::net_data &data, bool random, fpga_handler& handler); //* net::net_data como copia para mantener operaciones move
         net_fpga(net_fpga &&rh);
         net_fpga &operator=(net_fpga &&rh);
         net_fpga &operator=(const net_fpga &rh);
