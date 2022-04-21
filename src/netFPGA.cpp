@@ -280,13 +280,13 @@ namespace fpga
         return vec_out;
     }
 
-    void net_fpga::enqueue_net(const vector<float> &inputs)
+    void net_fpga::enqueue_net(const vector<float> &inputs, bool reload, bool same_in, bool big_nets)
     {
         vector<long int> int_inputs(n_ins,0);
         for(int i=0; i<inputs.size(); i++)
             int_inputs[i] = (long int)(inputs[i]*DECIMAL_FACTOR);
 
-        identifier = master.enqueue_net(my_data, int_inputs);
+        identifier = master.enqueue_net(my_data, int_inputs, reload, same_in, big_nets);
         if(identifier==0)
             cout << "FPGA memory full, unable to allocate "<< net_ident <<"\n";        
     }

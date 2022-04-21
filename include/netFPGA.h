@@ -71,7 +71,7 @@ namespace fpga
         net::net_data get_net_data() override;
 
         std::vector<float> launch_forward(const std::vector<float> &inputs) override;
-        void enqueue_net(const std::vector<float> &inputs);
+        void enqueue_net(const std::vector<float> &inputs, bool reload=true, bool same_in=false, bool big_nets=false);
         void solve_pack();
         std::vector<float>  read_net();
         

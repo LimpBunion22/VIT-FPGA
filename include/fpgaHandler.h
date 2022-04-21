@@ -25,8 +25,8 @@
 #endif
 
 // Configuration: [n_ins, in_dir, out_dir, params_dir, bias_dir]
-#define N_INS 8
-#define N_NEURONS 8
+#define N_INS 16
+#define N_NEURONS 16
 #define DECIMAL_FACTOR 1024
 #define MAX_SZ_ENQUEUE 256
 
@@ -157,7 +157,7 @@ class fpga_handler{
         void solve_nets();
 
         void read_image(std::vector<unsigned char> out_image);//Bloqueante
-        std::vector<long int> read_net(int identifier, int nouts = 0);//Bloqueante
+        std::vector<long int> read_net(int identifier, int nouts = 0, bool all = false);//Bloqueante
 
         void _cleanup();
 
