@@ -45,6 +45,12 @@
         "map": "cpp",
         "iostream": "cpp",
         "iomanip": "cpp",
-        "cinttypes": "cpp"
+        "cinttypes": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "thread": "cpp",
+        "bit": "cpp"
     }
 }
