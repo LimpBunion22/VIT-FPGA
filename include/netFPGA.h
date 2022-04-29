@@ -75,15 +75,8 @@ namespace fpga
         void solve_pack();
         std::vector<float>  read_net();
         
-        std::vector<float> launch_gradient(const net::net_sets &sets,
-                                                   size_t iterations,
-                                                   size_t batch_size,
-                                                   float alpha,
-                                                   float alpha_decay,
-                                                   float lambda,
-                                                   float error_threshold,
-                                                   int norm,
-                                                   size_t dropout_interval) override;
+        void set_gradient_attribute(int attribute, float value) override;
+        std::vector<float> launch_gradient(const net::net_set &set, size_t iterations, size_t batch_size) override;
         void print_inner_vals() override;
         signed long get_gradient_performance() override;
         signed long get_forward_performance() override;

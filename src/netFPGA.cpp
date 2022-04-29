@@ -305,16 +305,12 @@ namespace fpga
         return vec_out;
     }
 
+    void net_fpga::set_gradient_attribute(int attribute, float value){
+        
+    }
+
     //^ HANDLER + IMPLEMENfloatACIÓN (REVISAR MOVE OP)
-    vector<float> net_fpga::launch_gradient(const net::net_sets &sets,
-                                                   size_t iterations,
-                                                   size_t batch_size,
-                                                   float alpha,
-                                                   float alpha_decay,
-                                                   float lambda,
-                                                   float error_threshold,
-                                                   int norm,
-                                                   size_t dropout_interval) //* returns it times errors
+    vector<float> net_fpga::launch_gradient(const net::net_set &set, size_t iterations, size_t batch_size) //* returns it times errors
     {
         //         if (gradient_init)
         //         {

@@ -23,18 +23,50 @@
 
 namespace net
 {
-    constexpr int RELU2 = 0;
-    constexpr int SIGMOID = 1;
-    constexpr int RELU2_SOFT_MAX = 2;
+    //*attributes
+    constexpr int ALPHA = 0;
+    constexpr int ALPHA_DECAY = 1;
+    constexpr int ERROR_THRESHOLD = 2;
+    constexpr int REG_LAMBDA = 3;
+    constexpr int NORM = 4;
+    constexpr int DROPOUT_INTERVAL = 5;
+    constexpr int ADAM = 6;
+    constexpr int MOMENTUM_BETA = 7;
+    constexpr int RMS_BETA = 8;
+
+    //*selections
     constexpr size_t FULL_BATCH = 0;
-    constexpr int NO_NORM_REG = -1;
-    constexpr int REG_ONLY = 0;
-    constexpr int NORM_0 = 1;
-    constexpr int NORM_1 = 2;
-    constexpr int NORM_2 = 3;
-    constexpr int NORM_REG_0 = 4;
-    constexpr int NORM_REG_1 = 5;
-    constexpr int NORM_REG_2 = 6;
+    constexpr int ON = 1;
+    constexpr int OFF = 0;
+
+    //*normalization
+    constexpr int DISABLE = -1;
+    constexpr int REG = 0;
+    constexpr int MAX = 1;
+    constexpr int ABS = 2;
+    constexpr int MODULO = 3;
+    constexpr int MIN_MAX = 4;
+    constexpr int STANDARIZATION = 5;
+    constexpr int NORM_REG_0 = 6;
+    constexpr int NORM_REG_1 = 7;
+    constexpr int NORM_REG_2 = 8;
+
+    //*activations
+    constexpr int RELU = 0;
+    constexpr int RELU2 = 1;
+    constexpr int SIGMOID = 2;
+    constexpr int RELU2_SOFT_MAX = 3;
+
+    //*net definitions
+    constexpr float RELU2_ALPHA = 0.1f;
+    constexpr float FLOAT_CERO = 1e-10f;
+    constexpr float FLOAT_INF = 1e20f;
+    constexpr int RANDOM = 0;
+    constexpr int CERO = 1;
+    constexpr int DONT_CARE = 2;
+    constexpr float MAX_RANGE = 1.0f;
+    constexpr float MIN_RANGE = -MAX_RANGE;
+    constexpr float RANGE = 2.0f * MAX_RANGE;
 
     typedef struct
     {
@@ -50,7 +82,8 @@ namespace net
     {
         std::vector<std::vector<float>> set_ins;
         std::vector<std::vector<float>> set_outs;
-    } net_sets;
+        std::vector<int> labels;
+    } net_set;
 
     typedef struct
     {
@@ -60,5 +93,64 @@ namespace net
         size_t original_h;
         size_t original_w;
     } image_set;
+}
+
+namespace new_net
+{
+    constexpr int DISABLE = -1;
+
+    // basic attributes
+    constexpr int ALPHA = 0;
+    constexpr int ALPHA_DECAY = 1;
+    constexpr int ERROR_THRESHOLD = 2;
+    constexpr int EPOCHS = 3;
+    constexpr int BATCH_SIZE = 4;
+
+    // algos
+    constexpr int ADAM = 10;
+    constexpr int MOMENTUM_BETA = 11;
+    constexpr int RMS_BETA = 12;
+    constexpr int REG = 13;
+    constexpr int REG_LAMBDA = 14;
+    constexpr int DROPOUT = 15;
+
+    // normalization
+    constexpr int MAX = 20;
+    constexpr int ABS = 21;
+    constexpr int MODULO = 22;
+    constexpr int MIN_MAX = 23;
+    constexpr int STANDARIZATION = 24;
+
+    // activations
+    constexpr int RELU = 0;
+    constexpr int RELU2 = 1;
+    constexpr int SIGMOID = 2;
+    constexpr int RELU2_SOFT_MAX = 3;
+
+    // net definitions
+    constexpr float RELU2_ALPHA = 0.1f;
+    constexpr float FLOAT_CERO = 1e-10f;
+    constexpr float FLOAT_INF = 1e20f;
+    constexpr int RANDOM = 0;
+    constexpr int CERO = 1;
+    constexpr int DONT_CARE = 2;
+    constexpr float MAX_RANGE = 1.0f;
+    constexpr float MIN_RANGE = -MAX_RANGE;
+
+    typedef struct
+    {
+        int input_size;
+        std::vector<int> n_p_l;
+        std::vector<float> param_bias; // interleaved parmas_i, bias_i
+        std::vector<int> activation;   // activation to use
+    } layout;
+
+    typedef struct
+    {
+        std::vector<float> input_data;
+        std::vector<float> output_data;
+        std::vector<int> labels;
+        int data_num;
+    } set;
 }
 #endif
