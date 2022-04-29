@@ -286,7 +286,7 @@ namespace fpga
         for(int i=0; i<inputs.size(); i++)
             int_inputs[i] = (long int)(inputs[i]*DECIMAL_FACTOR);
 
-        identifier = master.enqueue_net(my_data, int_inputs, reload, same_in, big_nets);
+        identifier = master.enqueue_net(my_data, int_inputs);
         if(identifier==0)
             cout << "FPGA memory full, unable to allocate "<< net_ident <<"\n";        
     }

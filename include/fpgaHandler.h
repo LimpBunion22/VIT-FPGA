@@ -5,6 +5,7 @@
 #include "AOCLUtils/aocl_utils.h"
 #include "defines.h"
 #include "fpgaDefines.h"
+#include "kernelCore.h"
 
 using namespace aocl_utils;
 
@@ -22,21 +23,10 @@ class fpga_handler{
 
         bool shared_in = false;
 
-        std::vector<char*> img_out_dirs;
-        // std::vector<int*> net_outs_dirs;
-
-        std::vector<unsigned char> out_img_buff;
-        std::vector<long int> out_buff;
-
         int nets_enqueued = 0;
-        std::vector<net_register> net_list;   
+        std::vector<net_register> net_list; 
 
-        int wr_ev_ind = 0;
-        std::vector<cl_event> wr_events;
-        int exe_ev_ind = 0;
-        std::vector<cl_event> exe_events;
-        int rd_ev_ind = 0;
-        std::vector<cl_event> rd_events;
+        std::vector<kernel_core> cores;
 
     public:
         
@@ -45,22 +35,15 @@ class fpga_handler{
 
         void activate_handler();
 
-        void enqueue_image(std::string prg_name, std::vector<unsigned char> &in_image);//No bloqueante
-        int enqueue_net(fpga_data & in_net, std::vector<long int> &inputs, bool reload = true, bool same_in = false, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
-
-        bool check_img_ready();
-
+        int enqueue_net(fpga_data & in_net, std::vector<long int> &inputs, bool reload = true, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
         void solve_nets();
-
-        void read_image(std::vector<unsigned char> out_image);//Bloqueante
-        std::vector<long int> read_net(int identifier, int nouts = 0, bool all = false);//Bloqueante
+        std::vector<long int> read_net(int identifier);//Bloqueante
 
         void _cleanup();
 
     private:
-
-        void _show_events();
-        void _init_program(std::string prg_name, int prg_kind);
+    
+        void _init_program();
 };
 }
 

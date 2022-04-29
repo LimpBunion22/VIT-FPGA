@@ -20,22 +20,32 @@
     #define cout3(color, text, index) cout << color << text << index << RESET << "\n";
 #endif
 
-// Configuration: [n_ins, in_dir, out_dir, params_dir, bias_dir]
-#define N_INS 16
-#define N_NEURONS 16
-#define DECIMAL_FACTOR 1024
-#define MAX_SZ_ENQUEUE 256
-
-//Modos de programa de la FPGA
-#define NN 0
-#define IMG 1
-#define CNN 2
-
-//Modos de memoria de los buffers
-#define MEM_MODE_BY_LOTS 0
-#define MEM_MODE_FULL 1
-
 namespace fpga{
+
+    #define fpga_info(text) cout << BOLDWHITE << "INFO: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
+    #define fpga_warning(text) cout << BOLDYELLOW << "WARNING: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
+    #define fpga_error(text) cout << BOLDRED << "ERROR: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
+
+    // Configuration
+    #define N_CORES 8
+    #define KERNEL_BASE_NAME "MustangGT1965_"
+    #define PROGRAM_NAME "engine_kernel"
+    
+    #define N_INS 16
+    #define N_NEURONS 16
+    #define DECIMAL_FACTOR 1024
+    #define MAX_EVENTS 64
+    #define MAX_SZ_ENQUEUE 256
+
+    //Buffers size
+    #define INOUT_SIZE (2 * 16 * 1024 * 8 / N_CORES)
+    #define PARAMS_SIZE (16UL * 1024 * 16 * 1024 * 8 / N_CORES)
+    #define BIAS_SIZE (2 * 16 * 1024 * 8 / N_CORES)
+
+    //Modos de memoria de los buffers
+    #define MEM_MODE_BY_LOTS 0
+    #define MEM_MODE_FULL 1
+
     typedef struct
     {
         int n_ins;
@@ -51,38 +61,20 @@ namespace fpga{
     typedef struct 
     {
         fpga_data net;    
+
+        bool free_slot = true;
+
+        bool reload = true;
         bool big_net = false;
         
         bool enqueued = false;
         bool loaded = false;
         bool solved = false;
-        bool readed = false;
-
-        int wr_event = 0;
-        int exe_event = 0;
-        int rd_event = 0;
-
-        int inout_mem_res = 0;
-        int params_mem_res = 0;
-        int bias_mem_res = 0;
-
-        int in_out_base = 0;
-        int params_base = 0;
-        int bias_base = 0;
-
-        // int outs_rel = 0;
-        int params_enq_dir = 0;
-        int bias_enq_dir = 0;
-
-        int params_exe_dir = 0;    
-        int bias_exe_dir = 0;
-
-        int in_host_dir = 0;
-        int params_host_dir = 0;
-        int bias_host_dir = 0;
 
         int layer = 0;
-        unsigned char layer_parity = 1;
+
+        std::vector<long int> inputs;
+        std::vector<long int> outs;
 
     }net_register;
 }

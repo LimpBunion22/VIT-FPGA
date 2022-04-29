@@ -1,11 +1,11 @@
 
 #include "kernelCore.h"
+#include "defines.h"
+#include <iostream>
 
 using namespace std;
 using namespace fpga;
 using namespace aocl_utils;
-
-#define MAX_EVENTS 64
 
 kernel_core::~kernel_core()
 {
@@ -45,11 +45,21 @@ kernel_core::kernel_core(int id, std::string name, cl_program program, cl_contex
     lib_le_index = MAX_EVENTS - 1;
 }
 
-void kernel_core::enq_inputs(vector<long int> &inputs)
-{
+bool kernel_core::switch_mem_mode(u_char new_mem_mode){
+    
+    if(new_mem_mode == MEM_MODE_BY_LOTS || new_mem_mode == MEM_MODE_FULL){
+        memory_mode = new_mem_mode;
+        return true;
+    }
+    else{
+        return false;
+    }
+}
 
-    cl_int err;
-    _reset_events();
+void kernel_core::enq_inputs(vector<long int> &inputs, cl_context context)
+{
+    cl_int err;    
+    _reset_events(context);
 
     err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, inout_side_sel * in_out_bytes_sz, inputs.size() * sizeof(long int), inputs.data(), 0, NULL, &line_events[_le_event()]);
     checkError(err, "Failed to enqueue inputs");
@@ -59,6 +69,8 @@ void kernel_core::enq_inputs(vector<long int> &inputs)
 
     bias_h_dir = 0;
     bias_d_dir = 0;
+
+    kernel_busy = true;
 }
 
 void kernel_core::enq_layer(fpga_data &fpga_data2enq, int layer, bool load_params)
@@ -71,20 +83,19 @@ void kernel_core::enq_layer(fpga_data &fpga_data2enq, int layer, bool load_param
     configuration[1] = inout_side_sel * in_out_bytes_sz >> 7;
     configuration[2] = fpga_data2enq.n_p_l[layer] >> 4;
     configuration[3] = (inout_side_sel ^ 1) * in_out_bytes_sz >> 7;
-    configuration[4] = params_d_dir >> 4;
-    configuration[5] = bias_d_dir >> 4;
+    configuration[4] = params_d_dir >> 7;
+    configuration[5] = bias_d_dir >> 7;
 
-    int params2enq = layer == 0 ? fpga_data2enq.n_ins * fpga_data2enq.n_p_l[layer] : fpga_data2enq.n_p_l[layer - 1] * fpga_data2enq.n_p_l[layer];
-    int bias2enq = fpga_data2enq.n_p_l[layer];
+    int params2enq = (layer == 0 ? fpga_data2enq.n_ins * fpga_data2enq.n_p_l[layer] : fpga_data2enq.n_p_l[layer - 1] * fpga_data2enq.n_p_l[layer])* sizeof(long int);
+    int bias2enq = fpga_data2enq.n_p_l[layer]* sizeof(long int);
 
     if (memory_mode == MEM_MODE_FULL)
     {
-
         if (load_params == true)
         {
-            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir * sizeof(long int), params2enq * sizeof(long int), &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
+            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
             checkError(err, "Failed to enqueue inputs");
-            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir * sizeof(long int), bias2enq * sizeof(long int), &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
+            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
             checkError(err, "Failed to enqueue inputs");
 
             params_h_dir += params2enq;
@@ -101,11 +112,11 @@ void kernel_core::enq_layer(fpga_data &fpga_data2enq, int layer, bool load_param
     else
     {
         if(layer>1)//Revisar el pipeline y actualizacion de direcciones en device. Implementar funciones de eventos
-            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir * sizeof(long int), params2enq * sizeof(long int), &fpga_data2enq.params[params_h_dir], 1, &line_events[_pipe_le_event()], NULL);
+            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 1, &line_events[_pipe_le_event()], NULL);
         else
-            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir * sizeof(long int), params2enq * sizeof(long int), &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
+            err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
         checkError(err, "Failed to enqueue inputs");
-        err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir * sizeof(long int), bias2enq * sizeof(long int), &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
+        err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
         checkError(err, "Failed to enqueue inputs");
 
         params_h_dir += params2enq;
@@ -115,11 +126,20 @@ void kernel_core::enq_layer(fpga_data &fpga_data2enq, int layer, bool load_param
         err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[uce_ind], &line_events[_le_event()]);
         checkError(err, "Failed to enqueue task");
 
-        params_d_dir += params2enq;
-        bias_d_dir += bias2enq;
+        params_d_dir = inout_side_sel * params_bytes_sz/2;
+        bias_d_dir = inout_side_sel * in_out_bytes_sz/2;
     }
 
     inout_side_sel ^= 1;
+}
+
+void kernel_core::enq_read(std::vector<long int> & outs)
+{
+    cl_int err;
+    err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel*in_out_bytes_sz, outs.size() * sizeof(long int), outs.data(), 1, &line_events[_pipe_le_event()], NULL);
+    checkError(err, "Failed to enqueue read");   
+
+    kernel_busy = false; 
 }
 
 void kernel_core::kernel_cleanup()
@@ -137,4 +157,122 @@ void kernel_core::kernel_cleanup()
         clReleaseEvent(user_callback_events[i]);
         clReleaseEvent(line_events[i]);
     }
+}
+
+void kernel_core::_reset_events(cl_context context){
+
+    cl_int err;
+
+    for (int i = 0; i < MAX_EVENTS; i++)
+    {
+        clReleaseEvent(user_callback_events[i]);
+        clReleaseEvent(line_events[i]);
+        user_callback_events[i] = clCreateUserEvent(context, &err);
+        checkError(err, "Failed event");
+        line_events[i] = cl_event();
+    }
+
+}
+
+int kernel_core::_uce_event(){
+
+    uce_ind = lib_uce_index == 0 ? 0 : lib_uce_index-1;
+    lib_uce_index ++;
+    if(lib_uce_index>= MAX_EVENTS)
+        cout << RED << "UCE EVENT OVERFLOW" << RESET <<"\n";
+
+    return lib_uce_index-1;
+}
+
+int kernel_core::_le_event(){
+
+    le_ind = lib_le_index == 0 ? 0 : lib_le_index-1;
+    lib_le_index ++;
+    if(lib_le_index>= MAX_EVENTS)
+        cout << RED << "LE EVENT OVERFLOW" << RESET <<"\n";
+
+    return lib_le_index-1;
+}
+
+int kernel_core::_pipe_le_event(){
+
+    if((lib_le_index-3)%2 !=0)
+        cout << YELLOW << "PIPE LINE EVENTS UNEXPECTED" << RESET <<"\n";
+
+    return lib_le_index-3;
+}
+
+void kernel_core::_show_events()
+{
+    cout << "lib_uce_index " << lib_uce_index << "\n";
+    cout << "lib_le_index " << lib_le_index << "\n";
+    for (int i = 0; i <= MAX_EVENTS; i++)
+    {
+        cl_int status;
+        size_t sz_st = sizeof(cl_int);
+        clGetEventInfo(user_callback_events[i], CL_EVENT_COMMAND_EXECUTION_STATUS, sz_st, &status, &sz_st);
+        switch (status)
+        {
+        case CL_QUEUED:
+            cout << "   " << i << ": USER_EVENT " << BOLDWHITE << "QUEUED" << RESET;
+            break;
+        case CL_SUBMITTED:
+            cout << "   " << i << ": USER_EVENT " << BLUE << "SUBMITED" << RESET;
+            break;
+        case CL_RUNNING:
+            cout << "   " << i << ": USER_EVENT " << YELLOW << "RUNNING" << RESET;
+            break;
+        case CL_COMPLETE:
+            cout << "   " << i << ": USER_EVENT " << GREEN << "COMPLETED" << RESET;
+            break;
+        default:
+            cout << "   " << i << ": USER_EVENT " << "UNKNOWN" << RESET;
+        }
+        clGetEventInfo(line_events[i], CL_EVENT_COMMAND_EXECUTION_STATUS, sz_st, &status, &sz_st);
+        switch (status)
+        {
+        case CL_QUEUED:
+            cout << "   LINE_EVENT " << BOLDWHITE << ": QUEUED" << RESET << "\n";
+            break;
+        case CL_SUBMITTED:
+            cout << "   LINE_EVENT " << BLUE << ": SUBMITED" << RESET << "\n";
+            break;
+        case CL_RUNNING:
+            cout << "   LINE_EVENT " << YELLOW << ": RUNNING" << RESET << "\n";
+            break;
+        case CL_COMPLETE:
+            cout << "   LINE_EVENT " << GREEN << ": COMPLETED" << RESET << "\n";
+            break;
+        default:
+            cout << "   LINE_EVENT " << ": UNKNOWN" << RESET << "\n";
+        }
+    }
+}
+
+void enq_callback_func(cl_event event, cl_int event_command_exec_status, void *user_data){
+
+    kernel_core * father = (kernel_core *)user_data;
+
+    cl_int err;
+    int n_ins = father->configuration[0];
+    int in_dir = father->configuration[1];
+    int n_outs = father->configuration[2];
+    int out_dir = father->configuration[3];
+    int params_dir = father->configuration[4];
+    int bias_dir = father->configuration[5];
+
+    err = clSetKernelArg(father->kernel, 3, sizeof(int), (void *)&n_ins);
+    checkError(err, "set n_ins");
+    err = clSetKernelArg(father->kernel, 4, sizeof(int), (void *)&in_dir);
+    checkError(err, "set in_dir");
+    err = clSetKernelArg(father->kernel, 5, sizeof(int), (void *)&n_outs);
+    checkError(err, "set n_outs");
+    err = clSetKernelArg(father->kernel, 6, sizeof(int), (void *)&out_dir);
+    checkError(err, "set out_dir");
+    err = clSetKernelArg(father->kernel, 7, sizeof(int), (void *)&params_dir);
+    checkError(err, "set params_dir");
+    err = clSetKernelArg(father->kernel, 8, sizeof(int), (void *)&bias_dir);
+    checkError(err, "set bias_dir");
+
+    clSetUserEventStatus(father->user_callback_events[father->_uce_event()], CL_COMPLETE);
 }
