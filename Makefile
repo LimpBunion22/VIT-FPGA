@@ -83,12 +83,12 @@ LIB_DIRS :=
 INCS := $(wildcard )
 SRCS := $(wildcard src/*.cpp ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/src/AOCLUtils/*.cpp)
 LIBS := rt pthread
-OBJ_COMPILE :=  netFPGA.o fpgaHandler.o#$(patsubst %.cpp,%.o,$(SRCS))#$(SRCS:.cpp=.o)
+OBJ_COMPILE :=  netFPGA.o fpgaHandler.o kernelCore.o#$(patsubst %.cpp,%.o,$(SRCS))#$(SRCS:.cpp=.o)
 OTHERS_OBJ := opencl.o options.o
 $(info    OBJ is $(OBJ_COMPILE))
 
 # Make it all!
-all : $(TARGET_DIR)/$(TARGET)
+libs : $(TARGET_DIR)/$(TARGET) clean
 
 # OBJ = $(SRCS: .cpp=.o)
 $(TARGET_DIR)/$(TARGET) : $(OBJ_COMPILE) $(OTHERS_OBJ)
@@ -100,7 +100,20 @@ $(OBJ_COMPILE) : $(SRCS) $(INCS) $(TARGET_DIR)
 			$(AOCL_COMPILE_CONFIG) -c $(SRCS) $(AOCL_LINK_CONFIG) \
 			$(foreach D,$(LIB_DIRS),-L$D) \
 			$(foreach L,$(LIBS),-l$L) 
-			
+
+# Target
+EXE_TARGET := host
+EXE_TARGET_DIR := bin
+
+exe: $(EXE_TARGET_DIR)/$(EXE_TARGET) 
+# Host executable target.
+$(EXE_TARGET_DIR)/$(EXE_TARGET) : Makefile $(SRCS) $(INCS) $(EXE_TARGET_DIR)
+	$(ECHO)$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(EXTRACXXFLAGS) -fPIC $(foreach D,$(INC_DIRS),-I$D) \
+			$(AOCL_COMPILE_CONFIG) $(SRCS) $(AOCL_LINK_CONFIG) \
+			$(foreach D,$(LIB_DIRS),-L$D) \
+			$(foreach L,$(LIBS),-l$L) \
+			-o $(EXE_TARGET_DIR)/$(EXE_TARGET)
+
 # # Host executable target.
 # $(OBJ) : $(SRCS) $(INCS) $(TARGET_DIR)
 # 	$(ECHO)$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(EXTRACXXFLAGS) -fPIC $(foreach D,$(INC_DIRS),-I$D) \
@@ -111,9 +124,14 @@ $(OBJ_COMPILE) : $(SRCS) $(INCS) $(TARGET_DIR)
 
 $(TARGET_DIR) :
 	$(ECHO)mkdir $(TARGET_DIR)
-	
+
+$(EXE_TARGET_DIR) :
+	$(ECHO)mkdir $(EXE_TARGET_DIR)
+
+clean: 
+	$(ECHO)rm -f *.o	
 # Standard make targets
 # clean :
 # 	$(ECHO)rm -f $(TARGET_DIR)/$(TARGET)
 
-.PHONY : all #clean
+.PHONY : libs exe clean

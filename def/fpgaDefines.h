@@ -34,7 +34,7 @@ namespace fpga{
     #define N_INS 16
     #define N_NEURONS 16
     #define DECIMAL_FACTOR 1024
-    #define MAX_EVENTS 64
+    #define MAX_EVENTS 128
     #define MAX_SZ_ENQUEUE 256
 
     //Buffers size

@@ -51,6 +51,18 @@
         "numeric": "cpp",
         "random": "cpp",
         "thread": "cpp",
-        "bit": "cpp"
+        "bit": "cpp",
+        "internet": "cpp",
+        "condition_variable": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "future": "cpp",
+        "mutex": "cpp",
+        "buffer": "cpp",
+        "executor": "cpp",
+        "io_context": "cpp",
+        "netfwd": "cpp",
+        "socket": "cpp",
+        "timer": "cpp"
     }
 }

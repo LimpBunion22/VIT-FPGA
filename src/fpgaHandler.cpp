@@ -86,7 +86,7 @@ void fpga_handler::solve_nets()
     vector<int> enq_nets(N_CORES,0);
 
     bool solv_bool = true;
-    int enq_nets_cnt, solve_nets_cnt = 0;
+    int enq_nets_cnt = 0, solve_nets_cnt = 0;
 
     while(solv_bool){
 
@@ -96,7 +96,7 @@ void fpga_handler::solve_nets()
                     enq_nets[c] = enq_nets_cnt;
                     cores[c].enq_inputs(net_list[enq_nets_cnt].inputs, context);
                     net_list[enq_nets_cnt].loaded = true;
-                    net_list[enq_nets_cnt].outs = vector<long int>(net_list[enq_nets_cnt].net.n_p_l[net_list[enq_nets_cnt].net.n_layers],0);
+                    net_list[enq_nets_cnt].outs = vector<long int>(net_list[enq_nets_cnt].net.n_p_l[net_list[enq_nets_cnt].net.n_layers-1],0);
                     enq_nets_cnt++;
                     if(enq_nets_cnt>=nets_enqueued)
                         goto PROCESS;                
@@ -128,24 +128,29 @@ void fpga_handler::solve_nets()
 
 std::vector<long int> fpga_handler::read_net(int identifier)
 {
-    net_list[identifier].free_slot = true;
-    net_list[identifier].enqueued = false;
-    net_list[identifier].loaded = false;
-    net_list[identifier].solved = false;
+    int id = identifier-1;
+    net_list[id].free_slot = true;
+    net_list[id].enqueued = false;
+    net_list[id].loaded = false;
+    net_list[id].solved = false;
 
-    return net_list[identifier].outs;
+    return net_list[id].outs;
 }
 
 void fpga_handler::_cleanup()
 {
-    cout1(YELLOW, "   IN CLEANUP", "");
+    cout2(YELLOW, "   IN CLEANUP", "");
     if (im_the_handler)
     {
-        cout1(YELLOW, "   CLEANING", "");
-        if (program)
+        cout2(YELLOW, "   CLEANING", "");
+        if (program){
             clReleaseProgram(program);
-        if (context)
+            program = nullptr;
+        }
+        if (context){
             clReleaseContext(context);
+            context = nullptr;
+        }
 
         for (int i = 0; i < N_CORES; i++)
             cores[i].kernel_cleanup();
@@ -154,30 +159,33 @@ void fpga_handler::_cleanup()
 
 void fpga_handler::_init_program()
 {    
-    _cleanup();
+    // _cleanup();
 
     cl_int err = 0;
-    cout1(YELLOW, "   INIT_PROGRAM", "");
+    cout2(YELLOW, "   INIT_PROGRAM", "");
     err = clGetPlatformIDs(1, &platform, NULL);
     checkError(err, "Failed to get platforms");
 
-    cout1(YELLOW, "   PLATFORMS", "");
+    cout2(YELLOW, "   PLATFORMS", "");
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ACCELERATOR, 1, &device, NULL);
     checkError(err, "Failed to find device");
 
-    cout1(YELLOW, "   DEVICES", "");
+    cout2(YELLOW, "   DEVICES", "");
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
     checkError(err, "Failed to create context");
 
-    cout1(YELLOW, "   PROGRAM", "");
+    cout2(YELLOW, "   PROGRAM", "");
     std::string binary_file = getBoardBinaryFile(PROGRAM_NAME, device); // Coge el aocx
     program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
     err = clBuildProgram(program, 0, NULL, "", NULL, NULL);
     checkError(err, "Failed to create program");
 
     cores.reserve(N_CORES);
-    for(int i=0; i<N_CORES; i++)
-        cores.emplace_back(kernel_core(i, KERNEL_BASE_NAME+to_string(i), program, context, device, INOUT_SIZE, PARAMS_SIZE, BIAS_SIZE));
+    for(int i=1; i<(N_CORES+1); i++){
+        string aux_str(KERNEL_BASE_NAME);
+        aux_str.append(to_string(i));
+        cores.emplace_back(i, aux_str, program, context, device, INOUT_SIZE, PARAMS_SIZE, BIAS_SIZE);
+    }
 }
 
 void cleanup()

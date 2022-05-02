@@ -14,7 +14,7 @@ namespace fpga
     using namespace std;
     using namespace chrono;
 
-    net_fpga::net_fpga(fpga_handler& handler) : master(handler)
+    net_fpga::net_fpga(fpga_handler &handler) : master(handler)
     {
         auto t = std::time(nullptr);
         auto tm = *std::localtime(&t);
@@ -23,7 +23,7 @@ namespace fpga
         net_ident = oss.str();
     }
 
-    net_fpga::net_fpga(size_t n_ins, const vector<size_t> &n_p_l, const vector<int> &activation_type, fpga_handler& handler) : master(handler)
+    net_fpga::net_fpga(size_t n_ins, const vector<size_t> &n_p_l, const vector<int> &activation_type, fpga_handler &handler) : master(handler)
     {
 
         auto t = std::time(nullptr);
@@ -33,14 +33,15 @@ namespace fpga
         net_ident = oss.str();
 
         n_layers = n_p_l.size();
-        this->n_ins = n_ins%N_INS==0 ? n_ins : n_ins + (N_INS-n_ins%N_INS);
-        n_outs = n_p_l[n_layers-1];
+        this->n_ins = n_ins % N_INS == 0 ? n_ins : n_ins + (N_INS - n_ins % N_INS);
+        n_outs = n_p_l[n_layers - 1];
         this->n_p_l.reserve(n_layers);
         n_neurons = 0;
         n_params = 0;
 
-        for (int i = 0; i < n_layers; i++){
-            int nnrs = n_p_l[i]%N_NEURONS==0 ? n_p_l[i] : n_p_l[i] + (N_NEURONS-n_p_l[i]%N_NEURONS);
+        for (int i = 0; i < n_layers; i++)
+        {
+            int nnrs = n_p_l[i] % N_NEURONS == 0 ? n_p_l[i] : n_p_l[i] + (N_NEURONS - n_p_l[i] % N_NEURONS);
             this->n_p_l.emplace_back(nnrs);
             n_neurons += nnrs;
             if (i == 0)
@@ -49,19 +50,35 @@ namespace fpga
                 n_params += nnrs * this->n_p_l[i - 1];
         }
 
-        params.reserve(n_params);
+        params = vector<long int>(n_params,0);
         activations = 1; // 1 -> RELU2
-        bias.reserve(n_neurons);
+        bias = vector<long int>(n_neurons,0);
 
-        for (int i = 0; i < n_params; i++)
-            params.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
-        for (int i = 0; i < n_neurons; i++)
-            bias.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
-
+        int params_cnt = 0;
+        int bias_cnt = 0;
+        for (int l = 0; l < n_layers; l++)
+        {   
+            for(int n=0; n<this->n_p_l[l]; n++){
+                int npb = l==0 ? this->n_ins : this->n_p_l[l-1];
+                if(n<n_p_l[l]){
+                    bias[bias_cnt] = rand() % 4 * DECIMAL_FACTOR - DECIMAL_FACTOR;
+                    int nps = l==0 ? n_ins : n_p_l[l-1];
+                    for(int p=0; p<npb; p++){
+                        if(p<nps)
+                            params[params_cnt] = rand() % 4 * DECIMAL_FACTOR - DECIMAL_FACTOR;
+                        params_cnt++;
+                    }
+                }else{
+                    for(int p=0; p<npb; p++)
+                        params_cnt++;
+                }
+                bias_cnt++;
+            }
+        }
         my_data = get_fpga_data();
     }
 
-    net_fpga::net_fpga(const net::net_data &data, bool random, fpga_handler& handler)
+    net_fpga::net_fpga(const net::net_data &data, bool random, fpga_handler &handler)
         : n_layers(data.n_p_l.size()), n_sets(0), gradient_init(false), gradient_performance(0), forward_performance(0), master(handler)
 
     {
@@ -70,15 +87,16 @@ namespace fpga
         ostringstream oss;
         oss << put_time(&tm, "%d-%m-%Y %H-%M-%S");
         net_ident = oss.str();
-        
-        n_ins = data.n_ins%N_INS==0 ? data.n_ins : data.n_ins + (N_INS-data.n_ins%N_INS);
-        n_outs = data.n_p_l[n_layers-1];
+
+        n_ins = data.n_ins % N_INS == 0 ? data.n_ins : data.n_ins + (N_INS - data.n_ins % N_INS);
+        n_outs = data.n_p_l[n_layers - 1];
         n_p_l.reserve(n_layers);
         n_neurons = 0;
         n_params = 0;
 
-        for (int i = 0; i < n_layers; i++){
-            n_p_l.emplace_back(data.n_p_l[i]%N_NEURONS==0 ? data.n_p_l[i] : data.n_p_l[i] + (N_NEURONS-data.n_p_l[i]%N_NEURONS));
+        for (int i = 0; i < n_layers; i++)
+        {
+            n_p_l.emplace_back(data.n_p_l[i] % N_NEURONS == 0 ? data.n_p_l[i] : data.n_p_l[i] + (N_NEURONS - data.n_p_l[i] % N_NEURONS));
             n_neurons += n_p_l[i];
             if (i == 0)
                 n_params += n_p_l[i] * n_ins;
@@ -86,41 +104,28 @@ namespace fpga
                 n_params += n_p_l[i] * n_p_l[i - 1];
         }
 
-        params.reserve(n_params);
+        params = vector<long int>(n_params,0);
         activations = 1; // 1 -> RELU2
-        bias.reserve(n_neurons);
-
-        if (random){
-            for (int i = 0; i < n_params; i++)
-                params.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
-            for (int i = 0; i < n_neurons; i++)
-                bias.emplace_back(rand() % 2*DECIMAL_FACTOR - DECIMAL_FACTOR);
-        }else{
-
-            for (int i = 0; i < n_params; i++)
-                params.emplace_back(0.0f);
-            for (int i = 0; i < n_neurons; i++)
-                bias.emplace_back(0.0f);
-
-            int param_cnt = 0;
-            int neuron_cnt = 0;
-
-            for (int i = 0; i < n_layers; i++){
-                int n_per_n = i==0 ? n_ins:n_p_l[i-1];
-                int o_n_per_n = i==0 ? data.n_ins:data.n_p_l[i-1];
-                for (int j = 0; j <  n_p_l[i]; j++){
-                    for (int k = 0; k < n_per_n; k++){
-                        if(j<data.n_p_l[i] && k < o_n_per_n)
-                            params[param_cnt] = (long int)(DECIMAL_FACTOR*data.params[i][j*o_n_per_n + k]);
-                        param_cnt++;
-                    }
-                    if(j<data.n_p_l[i])
-                        bias[neuron_cnt] = (long int)(DECIMAL_FACTOR*DECIMAL_FACTOR*data.bias[i][j]);
-                    neuron_cnt++;
+        bias = vector<long int>(n_neurons,0);
+        int param_cnt = 0;
+        int neuron_cnt = 0;
+        for (int i = 0; i < n_layers; i++)
+        {
+            int n_per_n = i == 0 ? n_ins : n_p_l[i - 1];
+            int o_n_per_n = i == 0 ? data.n_ins : data.n_p_l[i - 1];
+            for (int j = 0; j < n_p_l[i]; j++)
+            {
+                for (int k = 0; k < n_per_n; k++)
+                {
+                    if (j < data.n_p_l[i] && k < o_n_per_n)
+                        params[param_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(long int)(DECIMAL_FACTOR * data.params[i][j * o_n_per_n + k]);
+                    param_cnt++;
                 }
+                if (j < data.n_p_l[i])
+                    bias[neuron_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(long int)(DECIMAL_FACTOR * DECIMAL_FACTOR * data.bias[i][j]);
+                neuron_cnt++;
             }
         }
-
         my_data = get_fpga_data();
         // cout << "FPGA NET: CREATED\n";
     }
@@ -174,7 +179,7 @@ namespace fpga
     net_fpga &net_fpga::operator=(const net_fpga &rh)
     {
         if (this != &rh)
-        {   
+        {
             net_ident = rh.net_ident;
             n_ins = rh.n_ins;
             n_outs = rh.n_outs;
@@ -192,7 +197,7 @@ namespace fpga
 
             master = rh.master;
 
-            my_data = get_fpga_data();            
+            my_data = get_fpga_data();
         }
 
         return *this;
@@ -208,18 +213,21 @@ namespace fpga
         int params_cnt = 0;
         int neurons_cnt = 0;
 
-        for (int i = 0; i < n_layers; i++){
+        for (int i = 0; i < n_layers; i++)
+        {
             data.n_p_l[i] = n_p_l[i];
             int n_params = (i == 0) ? n_ins : n_p_l[i - 1];
-            data.params.emplace_back(vector<float>(n_params));
+            data.params.emplace_back(n_params);
             data.bias.emplace_back(n_p_l[i]);
 
-            for (int j = 0; j < n_p_l[i]; j++){
+            for (int j = 0; j < n_p_l[i]; j++)
+            {
                 data.bias[i][j] = (float)bias[neurons_cnt];
                 neurons_cnt++;
 
-                for (int k = 0; k < n_params; k++){
-                    data.params[i][j*n_params + k] = (float)params[params_cnt];
+                for (int k = 0; k < n_params; k++)
+                {
+                    data.params[i][j * n_params + k] = (float)params[params_cnt];
                     params_cnt++;
                 }
             }
@@ -227,7 +235,8 @@ namespace fpga
         return data;
     }
 
-    fpga_data net_fpga::get_fpga_data(){
+    fpga_data net_fpga::get_fpga_data()
+    {
 
         fpga_data my_data;
         my_data.n_ins = n_ins;
@@ -243,70 +252,78 @@ namespace fpga
 
     vector<float> net_fpga::launch_forward(const vector<float> &inputs) //* returns result
     {
-        //cout << BLUE << "   NET_FPGA: Launching forward" << RESET << "\n";
-        vector<long int> int_inputs(n_ins,0);
-        for(int i=0; i<inputs.size(); i++)
-            int_inputs[i] = (long int)(inputs[i]*DECIMAL_FACTOR);
+        // cout << BLUE << "   NET_FPGA: Launching forward" << RESET << "\n";
+        vector<long int> int_inputs(n_ins, 0);
+        for (int i = 0; i < inputs.size(); i++)
+            int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
 
 #ifdef PERFORMANCE
         auto start = high_resolution_clock::now();
 #endif
-        cout2(BLUE,"   NET_FPGA: Enqueuing net", "");
+        cout3(BLUE, "   NET_FPGA: Enqueuing net", "");
         identifier = master.enqueue_net(my_data, int_inputs);
-        cout2(BLUE,"   NET_FPGA: Net enqueued", "");
-        if(identifier==0){
-            cout << "FPGA memory full, unable to allocate "<< net_ident <<"\n";
-            vector<float> vec_out(n_outs,0);
+        cout3(BLUE, "   NET_FPGA: Net enqueued", "");
+        if (identifier == 0)
+        {
+            cout << "FPGA memory full, unable to allocate " << net_ident << "\n";
+            vector<float> vec_out(n_outs, 0);
             return vec_out;
         }
 
-        cout2(BLUE,"   NET_FPGA: Solving net", "");
+        cout3(BLUE, "   NET_FPGA: Solving net", "");
         master.solve_nets();
-        cout2(BLUE,"   NET_FPGA: Net solved", "");
+        cout3(BLUE, "   NET_FPGA: Net solved", "");
 
-        cout2(BLUE,"   NET_FPGA: Reading net", "");
+        cout3(BLUE, "   NET_FPGA: Reading net", "");
         vector<long int> int_out = master.read_net(identifier);
-        cout2(BLUE,"   NET_FPGA: Net readed", "");
+        cout3(BLUE, "   NET_FPGA: Net readed", "");
 
 #ifdef PERFORMANCE
         auto end = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(end - start);
         forward_performance = duration.count();
-#endif   
-        vector<float> vec_out(n_outs,0);     
+#endif
+        #if fpga_verbose>=1
+            fpga_info("Salidas\n");
+            for (int i = 0; i < int_out.size(); i++)
+                fpga_info(i<<": "<<int_out[i]);
+        #endif
+
+        vector<float> vec_out(n_outs, 0);
         for (int i = 0; i < n_outs; i++)
-            vec_out[i] = float(int_out[i])/DECIMAL_FACTOR;
+            vec_out[i] = float(int_out[i]) / DECIMAL_FACTOR;
 
         return vec_out;
     }
 
     void net_fpga::enqueue_net(const vector<float> &inputs, bool reload, bool same_in, bool big_nets)
     {
-        vector<long int> int_inputs(n_ins,0);
-        for(int i=0; i<inputs.size(); i++)
-            int_inputs[i] = (long int)(inputs[i]*DECIMAL_FACTOR);
+        vector<long int> int_inputs(n_ins, 0);
+        for (int i = 0; i < inputs.size(); i++)
+            int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
 
         identifier = master.enqueue_net(my_data, int_inputs);
-        if(identifier==0)
-            cout << "FPGA memory full, unable to allocate "<< net_ident <<"\n";        
+        if (identifier == 0)
+            cout << "FPGA memory full, unable to allocate " << net_ident << "\n";
     }
 
-    void net_fpga::solve_pack(){
+    void net_fpga::solve_pack()
+    {
         master.solve_nets();
     }
 
     vector<float> net_fpga::read_net()
     {
         vector<long int> int_out = master.read_net(identifier);
-        vector<float> vec_out(n_outs,0);     
+        vector<float> vec_out(n_outs, 0);
         for (int i = 0; i < n_outs; i++)
-            vec_out[i] = float(int_out[i])/DECIMAL_FACTOR;
+            vec_out[i] = float(int_out[i]) / DECIMAL_FACTOR;
 
         return vec_out;
     }
 
-    void net_fpga::set_gradient_attribute(int attribute, float value){
-        
+    void net_fpga::set_gradient_attribute(int attribute, float value)
+    {
     }
 
     //^ HANDLER + IMPLEMENfloatACIÓN (REVISAR MOVE OP)
@@ -385,4 +402,3 @@ namespace fpga
         // cout << "FPGA deleted\n";
     }
 }
-

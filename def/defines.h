@@ -58,7 +58,7 @@ namespace net
     constexpr int RELU2_SOFT_MAX = 3;
 
     //*net definitions
-    constexpr float RELU2_ALPHA = 0.1f;
+    constexpr float RELU2_ALPHA = 0.0625f;
     constexpr float FLOAT_CERO = 1e-10f;
     constexpr float FLOAT_INF = 1e20f;
     constexpr int RANDOM = 0;
