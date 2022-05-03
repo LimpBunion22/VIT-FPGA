@@ -36,28 +36,31 @@ namespace fpga
         std::vector<cl_event> line_events;
 
         int inout_side_sel = 0;
+        cl_context mycontext = nullptr;
 
     public:
         ~kernel_core();
         kernel_core() = delete;
 
-        kernel_core(int id, std::string name, cl_program program, cl_context context, cl_device_id device, size_t bytes_inout, size_t bytes_params, size_t bytes_bias);
+        kernel_core(int id, std::string name, cl_program program, cl_context &context, cl_device_id device, size_t bytes_inout, size_t bytes_params, size_t bytes_bias);
 
         bool switch_mem_mode(u_char new_mem_mode);
 
-        void enq_inputs(std::vector<long int> &inputs, cl_context context);
+        void enq_inputs(std::vector<long int> &inputs, cl_context &context);
         void enq_layer(fpga_data &fpga_data2enq, int layer, bool load_params = true);
         void enq_read(std::vector<long int> &outs);
 
         void kernel_cleanup();
         int _uce_event();
+        int _uce_event_ind();
 
     // private:
-        void _reset_events(cl_context context);
+        void _reset_events(cl_context &context);
         int _le_event();
         int _pipe_le_event();
 
-        void _show_events();
+        void _show_event_info(cl_event &event);
+        void _show_events(int ind = -1);
     };
 
     void enq_callback_func(cl_event event, cl_int event_command_exec_status, void *user_data);

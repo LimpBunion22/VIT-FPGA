@@ -2,6 +2,8 @@
 #include "kernelCore.h"
 #include "defines.h"
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 using namespace std;
 using namespace aocl_utils;
@@ -13,9 +15,10 @@ namespace fpga
         kernel_cleanup();
     }
 
-    kernel_core::kernel_core(int id, std::string name, cl_program program, cl_context context, cl_device_id device, size_t bytes_inout, size_t bytes_params, size_t bytes_bias) : kernel_id(id), kernel_name(name), in_out_bytes_sz(bytes_inout / 2), params_bytes_sz(bytes_params), bias_bytes_sz(bytes_bias), line_events(MAX_EVENTS), configuration(6, 0)
+    kernel_core::kernel_core(int id, std::string name, cl_program program, cl_context &context, cl_device_id device, size_t bytes_inout, size_t bytes_params, size_t bytes_bias) : kernel_id(id), kernel_name(name), in_out_bytes_sz(bytes_inout / 2), params_bytes_sz(bytes_params), bias_bytes_sz(bytes_bias), line_events(MAX_EVENTS), user_callback_events(MAX_EVENTS), configuration(6, 0)
     {
         cl_int err;
+        mycontext = context;
         wr_queue = clCreateCommandQueue(context, device, 0, &err);
         checkError(err, "Failed to create write queue");
         exe_queue = clCreateCommandQueue(context, device, 0, &err);
@@ -38,13 +41,18 @@ namespace fpga
         err = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&bias_dev);
         checkError(err, "Failed to set arg bias");
 
-        user_callback_events.reserve(MAX_EVENTS);
-        line_events.reserve(MAX_EVENTS);
-        for (int i = 0; i < MAX_EVENTS; i++){
-            user_callback_events.emplace_back(clCreateUserEvent(context, &err));
-            checkError(err, "Failed create user event");
-            line_events.emplace_back();
-        }
+        err = clSetKernelArg(kernel, 3, sizeof(int), (void *)&configuration[0]);
+        checkError(err, "set n_ins");
+        err = clSetKernelArg(kernel, 4, sizeof(int), (void *)&configuration[1]);
+        checkError(err, "set in_dir");
+        err = clSetKernelArg(kernel, 5, sizeof(int), (void *)&configuration[2]);
+        checkError(err, "set n_outs");
+        err = clSetKernelArg(kernel, 6, sizeof(int), (void *)&configuration[3]);
+        checkError(err, "set out_dir");
+        err = clSetKernelArg(kernel, 7, sizeof(int), (void *)&configuration[4]);
+        checkError(err, "set params_dir");
+        err = clSetKernelArg(kernel, 8, sizeof(int), (void *)&configuration[5]);
+        checkError(err, "set bias_dir");
     }
 
     bool kernel_core::switch_mem_mode(u_char new_mem_mode)
@@ -61,7 +69,7 @@ namespace fpga
         }
     }
 
-    void kernel_core::enq_inputs(vector<long int> &inputs, cl_context context)
+    void kernel_core::enq_inputs(vector<long int> &inputs, cl_context &context)
     {
         cl_int err;
         _reset_events(context);
@@ -136,21 +144,38 @@ namespace fpga
                 for(int v=0; v<bias2enq/sizeof(long int); v++)
                     fpga_info(v << ": " << fpga_data2enq.bias[bias_h_dir + v]);
             #endif
-
-            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
-            checkError(err, "Failed to enqueue inputs");
+            // int aux;
             if (layer > 1) // Revisar el pipeline y actualizacion de direcciones en device. Implementar funciones de eventos
-                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 1, &line_events[_pipe_le_event()], NULL);
-            else
-                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_TRUE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
+            {
+                // aux = _pipe_le_event();
+                // fpga_info("write of layer "<<layer<<" awaits le "<<aux);
+                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 1, &line_events[ _pipe_le_event()], NULL);
+
+            }else{
+                err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
+            }
+            checkError(err, "Failed to enqueue inputs");
+            
+            // aux = _le_event();
+            // fpga_info("write of layer "<<layer<<" activates le "<<aux);
+            err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
             checkError(err, "Failed to enqueue inputs");
 
             params_h_dir += params2enq/sizeof(long int);
             bias_h_dir += bias2enq/sizeof(long int);
 
+            clFlush(wr_queue);
+
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);
-            // clWaitForEvents(1,&user_callback_events[uce_ind]);
-            err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[uce_ind], &line_events[_le_event()]);
+
+            // aux = _uce_event_ind();
+            // int aux2 = _le_event();
+            // fpga_info("solve of layer "<<layer<<" awaits us "<<aux);
+            // fpga_info("solve of layer "<<layer<<" activates le "<<aux2);
+            // err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[aux], &(line_events[aux2]));//  
+            // clFlush(exe_queue);
+            err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);//
+            // _show_events(aux);
             checkError(err, "Failed to enqueue task");
 
             params_d_dir = (inout_side_sel^1) * params_bytes_sz / 2;
@@ -163,10 +188,7 @@ namespace fpga
     void kernel_core::enq_read(std::vector<long int> &outs)
     {
         cl_int err;
-        // fpga_info("in_out_bytes_sz " << in_out_bytes_sz);
-        // fpga_info("read_dir " << inout_side_sel * in_out_bytes_sz);
-        // fpga_info("read_size " << outs.size() * sizeof(long int));
-        err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel * in_out_bytes_sz, outs.size() * sizeof(long int), outs.data(), 1, &line_events[_pipe_le_event()], NULL);
+        err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel * in_out_bytes_sz, outs.size() * sizeof(long int), outs.data(), 0, NULL, NULL);
         checkError(err, "Failed to enqueue read");
 
         kernel_busy = false;
@@ -201,10 +223,14 @@ namespace fpga
         }
     }
 
-    void kernel_core::_reset_events(cl_context context)
+    void kernel_core::_reset_events(cl_context &context)
     {
 
         cl_int err;
+        uce_ind = 0;
+        lib_uce_index = 0;
+        le_ind = 0;
+        lib_le_index = 0;
 
         for (int i = 0; i < MAX_EVENTS; i++)
         {
@@ -212,30 +238,41 @@ namespace fpga
             clReleaseEvent(line_events[i]);
             user_callback_events[i] = clCreateUserEvent(context, &err);
             checkError(err, "Failed event");
-            line_events[i] = cl_event();
+            // clSetUserEventStatus(user_callback_events[i], CL_COMPLETE);
+            // checkError(err, "Failed event");
         }
+        line_events = vector<cl_event>(MAX_EVENTS);
     }
 
     int kernel_core::_uce_event()
     {
-
-        uce_ind = lib_uce_index == 0 ? 0 : lib_uce_index - 1;
         lib_uce_index++;
         if (lib_uce_index >= MAX_EVENTS)
             cout << RED << "UCE EVENT OVERFLOW" << RESET << "\n";
+        // fpga_info("task running " << lib_uce_index-1);
+        return lib_uce_index-1;
+    }
 
-        return lib_uce_index - 1;
+    int kernel_core::_uce_event_ind()
+    {
+        uce_ind ++;
+        if (uce_ind >= MAX_EVENTS)
+            cout << RED << "UCE EVENT OVERFLOW" << RESET << "\n";
+        // fpga_info("task enqueued " << uce_ind-1);
+        // _show_events(uce_ind-1);
+
+        return uce_ind-1;
     }
 
     int kernel_core::_le_event()
     {
 
-        le_ind = lib_le_index == 0 ? 0 : lib_le_index - 1;
+        le_ind = lib_le_index;
         lib_le_index++;
         if (lib_le_index >= MAX_EVENTS)
             cout << RED << "LE EVENT OVERFLOW" << RESET << "\n";
 
-        return lib_le_index - 1;
+        return le_ind;
     }
 
     int kernel_core::_pipe_le_event()
@@ -247,11 +284,16 @@ namespace fpga
         return lib_le_index - 3;
     }
 
-    void kernel_core::_show_events()
+    void kernel_core::_show_event_info(cl_event &event){
+    }
+
+    void kernel_core::_show_events(int ind)
     {
-        cout << "lib_uce_index " << lib_uce_index << "\n";
-        cout << "lib_le_index " << lib_le_index << "\n";
-        for (int i = 0; i <= MAX_EVENTS; i++)
+        fpga_info("lib_uce_index " << lib_uce_index);
+        fpga_info("lib_le_index " << lib_le_index);
+        int max = ind==-1? MAX_EVENTS:ind+1;
+        int min = ind==-1? 0:ind;
+        for (int i = min; i < max; i++)
         {
             cl_int status;
             size_t sz_st = sizeof(cl_int);
