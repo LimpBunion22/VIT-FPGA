@@ -38,6 +38,12 @@ namespace fpga
         int inout_side_sel = 0;
         cl_context mycontext = nullptr;
 
+        #if fpga_performance == 1
+            int write_ins_perf = 0;
+            int write_bp_perf = 0;
+            int enq_task_perf = 0;
+        #endif
+
     public:
         ~kernel_core();
         kernel_core() = delete;

@@ -1,4 +1,5 @@
 #include <netFPGA.h>
+#include "fpgaDefines.h"
 #include <math.h>
 #include <iostream>
 #include <assert.h>
@@ -252,14 +253,14 @@ namespace fpga
 
     vector<float> net_fpga::launch_forward(const vector<float> &inputs) //* returns result
     {
+#if fpga_performance == 1
+        auto start = high_resolution_clock::now();
+#endif
         // cout << BLUE << "   NET_FPGA: Launching forward" << RESET << "\n";
         vector<long int> int_inputs(n_ins, 0);
         for (int i = 0; i < inputs.size(); i++)
             int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
 
-#ifdef PERFORMANCE
-        auto start = high_resolution_clock::now();
-#endif
         cout3(BLUE, "   NET_FPGA: Enqueuing net", "");
         identifier = master.enqueue_net(my_data, int_inputs);
         cout3(BLUE, "   NET_FPGA: Net enqueued", "");
@@ -278,10 +279,11 @@ namespace fpga
         vector<long int> int_out = master.read_net(identifier);
         cout3(BLUE, "   NET_FPGA: Net readed", "");
 
-#ifdef PERFORMANCE
+#if fpga_performance == 1
         auto end = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(end - start);
-        forward_performance = duration.count();
+        fpga_info("forward performance"<<duration.count()<<"ms");
+        // forward_performance = duration.count();
 #endif
         #if fpga_verbose>=1
             fpga_info("Salidas\n");
@@ -302,14 +304,22 @@ namespace fpga
         for (int i = 0; i < inputs.size(); i++)
             int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
 
-        identifier = master.enqueue_net(my_data, int_inputs);
+        identifier = master.enqueue_net(my_data, int_inputs,reload,big_nets);
         if (identifier == 0)
             cout << "FPGA memory full, unable to allocate " << net_ident << "\n";
     }
 
     void net_fpga::solve_pack()
     {
+#if fpga_performance == 1
+        auto start = high_resolution_clock::now();
+#endif
         master.solve_nets();
+#if fpga_performance == 1
+        auto end = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(end - start);
+        fpga_info("solve performance "<<duration.count()<<"us");
+#endif
     }
 
     vector<float> net_fpga::read_net()

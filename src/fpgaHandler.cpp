@@ -6,10 +6,14 @@
 #include "CL/cl.hpp"
 #include "AOCLUtils/aocl_utils.h"
 #include <thread>
+#include <chrono>
+#include <iomanip>
+#include <ctime>    
 
 using namespace std;
 using namespace fpga;
 using namespace aocl_utils;
+using namespace chrono;
 
 bool fpga_handler::there_is_a_handler = false;
 fpga_handler* cl_ptr = nullptr;
@@ -69,7 +73,7 @@ int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<long int> &inputs, 
                 net_list[cnt].free_slot = false;
                 net_list[cnt].net = in_net;
                 net_list[cnt].inputs = inputs;
-                net_list[cnt].reload = true;
+                net_list[cnt].reload = reload;
                 net_list[cnt].enqueued = true;
                 net_list[cnt].big_net = big_nets || in_net.n_ins*sizeof(long int)>INOUT_SIZE/2 || in_net.n_params*sizeof(long int)>PARAMS_SIZE || in_net.n_neurons>BIAS_SIZE;
             }
@@ -87,13 +91,22 @@ void fpga_handler::solve_nets()
 
     bool solv_bool = true;
     int enq_nets_cnt = 0, solve_nets_cnt = 0;
+#if fpga_performance == 1
+    int enq_time = 0;
+    int solve_time = 0;
+    int read_time = 0;
+    int enq_layer_time = 0;
+#endif
 
     while(solv_bool){
-
+#if fpga_performance == 1
+        auto start = high_resolution_clock::now();
+#endif
         if(enq_nets_cnt<nets_enqueued){
             for(int c=0; c<N_CORES; c++){
                 if(cores[c].kernel_busy == false){
                     enq_nets[c] = enq_nets_cnt;
+
                     cores[c].enq_inputs(net_list[enq_nets_cnt].inputs, context);
                     net_list[enq_nets_cnt].loaded = true;
                     net_list[enq_nets_cnt].outs = vector<long int>(net_list[enq_nets_cnt].net.n_p_l[net_list[enq_nets_cnt].net.n_layers-1],0);
@@ -105,25 +118,59 @@ void fpga_handler::solve_nets()
         }
 
         PROCESS:
+#if fpga_performance == 1
+        auto end = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(end - start);
+        enq_time += duration.count();
+        start = high_resolution_clock::now();
+#endif
 
         for(int c=0; c<N_CORES; c++){
             if(cores[c].kernel_busy == true){
                 int ind = enq_nets[c];
+                #if fpga_performance == 1
+                    auto start2 = high_resolution_clock::now();
+                #endif
                 if(net_list[ind].layer == net_list[ind].net.n_layers){
                     cores[c].enq_read(net_list[ind].outs);
+                    #if fpga_performance == 1
+                            auto end2 = high_resolution_clock::now();
+                            auto duration2 = duration_cast<microseconds>(end2 - start2);
+                            read_time += duration2.count();
+                    #endif
                     cores[c].kernel_busy = false;
                     net_list[ind].solved = true;
+                    if(net_list[ind].big_net)
+                        cores[c].switch_mem_mode(MEM_MODE_BY_LOTS);
+                    else
+                        cores[c].switch_mem_mode(MEM_MODE_FULL);
                     solve_nets_cnt++;
                 }else{
-                    cores[c].enq_layer(net_list[ind].net,net_list[ind].layer);
+                    cores[c].enq_layer(net_list[ind].net,net_list[ind].layer,net_list[ind].reload);
+                    #if fpga_performance == 1
+                            auto end2 = high_resolution_clock::now();
+                            auto duration2 = duration_cast<microseconds>(end2 - start2);
+                            enq_layer_time += duration2.count();
+                    #endif
                     net_list[ind].layer++;
                 }
             }
         }
+#if fpga_performance == 1
+        end = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(end - start);
+        solve_time += duration.count();
+#endif
 
         if(solve_nets_cnt >= nets_enqueued)
             solv_bool = false;
     }
+#if fpga_performance == 1
+    fpga_info("enq ins performance "<<enq_time<<"us");
+    fpga_info("solve total performance "<<solve_time<<"us");
+    fpga_info("solve read performance "<<read_time<<"us");
+    fpga_info("solve layer performance "<<enq_layer_time<<"us");
+#endif
 }
 
 std::vector<long int> fpga_handler::read_net(int identifier)
@@ -133,6 +180,8 @@ std::vector<long int> fpga_handler::read_net(int identifier)
     net_list[id].enqueued = false;
     net_list[id].loaded = false;
     net_list[id].solved = false;
+    net_list[id].layer = 0;
+    nets_enqueued--;
 
     return net_list[id].outs;
 }
@@ -151,7 +200,6 @@ void fpga_handler::_cleanup()
             clReleaseContext(context);
             context = nullptr;
         }
-
         for (int i = 0; i < N_CORES; i++)
             cores[i].kernel_cleanup();
     }

@@ -4,9 +4,13 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <iomanip>
+#include <ctime>  
+
 
 using namespace std;
 using namespace aocl_utils;
+using namespace chrono;
 
 namespace fpga
 {
@@ -53,6 +57,12 @@ namespace fpga
         checkError(err, "set params_dir");
         err = clSetKernelArg(kernel, 8, sizeof(int), (void *)&configuration[5]);
         checkError(err, "set bias_dir");
+
+        for (int i = 0; i < MAX_EVENTS; i++)
+        {
+            user_callback_events[i] = clCreateUserEvent(context, &err);
+            checkError(err, "Failed event");
+        }
     }
 
     bool kernel_core::switch_mem_mode(u_char new_mem_mode)
@@ -73,9 +83,18 @@ namespace fpga
     {
         cl_int err;
         _reset_events(context);
+#if fpga_performance == 1
+        auto start = high_resolution_clock::now();
+#endif
 
         err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, inout_side_sel * in_out_bytes_sz, inputs.size() * sizeof(long int), inputs.data(), 0, NULL, &line_events[_le_event()]);
         checkError(err, "Failed to enqueue inputs");
+        clFlush(wr_queue);
+#if fpga_performance == 1
+        auto end = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(end - start);
+        write_ins_perf += duration.count();
+#endif
 
         params_h_dir = 0;
         params_d_dir = 0;
@@ -90,26 +109,17 @@ namespace fpga
     {
 
         cl_int err;
-
-        cout1(BOLDWHITE,"layer ",layer)
+        
         // Configuration = {n_ins/N_NEURONS, ins_dir(/N_NEURONS/sizeof(long int)), n_outs/N_NEURONS, outs_dir/N_NEURONS/sizeof(long int), params_dir/N_NEURONS, bias_dir/N_NEURONS}
         configuration[0] = fpga_data2enq.n_ins >> 4;
-        cout1(BOLDWHITE,"packs n_ins ",configuration[0])
         configuration[1] = (inout_side_sel * in_out_bytes_sz) >> 7;
-        cout1(BOLDWHITE,"dir ins ",configuration[1])
         configuration[2] = fpga_data2enq.n_p_l[layer] >> 4;
-        cout1(BOLDWHITE,"packs neurons ",configuration[2])
         configuration[3] = ((inout_side_sel ^ 1) * in_out_bytes_sz) >> 7;
-        cout1(BOLDWHITE,"dir outs ",configuration[3])
         configuration[4] = params_d_dir >> 7;
-        cout1(BOLDWHITE,"dir params ",configuration[4])
         configuration[5] = bias_d_dir >> 7;
-        cout1(BOLDWHITE,"dir bias ",configuration[5])
 
         int params2enq = (layer == 0 ? fpga_data2enq.n_ins * fpga_data2enq.n_p_l[layer] : fpga_data2enq.n_p_l[layer - 1] * fpga_data2enq.n_p_l[layer]) * sizeof(long int);
-        int bias2enq = fpga_data2enq.n_p_l[layer] * sizeof(long int);
-        cout1(BOLDWHITE,"params2enq ",params2enq/sizeof(long int))
-        cout1(BOLDWHITE,"bias2enq ",bias2enq/sizeof(long int))              
+        int bias2enq = fpga_data2enq.n_p_l[layer] * sizeof(long int);           
 
         if (memory_mode == MEM_MODE_FULL)
         {
@@ -121,62 +131,56 @@ namespace fpga
                 checkError(err, "Failed to enqueue inputs");
                 err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
                 checkError(err, "Failed to enqueue inputs");
+                clFlush(wr_queue);
 
                 params_h_dir += params2enq;
                 bias_h_dir += bias2enq;
             }
 
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);
-            err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[uce_ind], &line_events[_le_event()]);
+            err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);
             checkError(err, "Failed to enqueue task");
+            clFlush(exe_queue);
 
             params_d_dir += params2enq;
             bias_d_dir += bias2enq;
         }
         else
-        {
-            cout1(BOLDWHITE,"MEM_MODE ","MEM_MODE_BY_LOTS")
-            #if fpga_verbose>=1
-                fpga_info("PARAMS: ");
-                for(int v=0; v<params2enq/sizeof(long int); v++)
-                    fpga_info(v << ": " << fpga_data2enq.params[params_h_dir + v]);
-                fpga_info("BIAS: ");
-                for(int v=0; v<bias2enq/sizeof(long int); v++)
-                    fpga_info(v << ": " << fpga_data2enq.bias[bias_h_dir + v]);
-            #endif
-            // int aux;
-            if (layer > 1) // Revisar el pipeline y actualizacion de direcciones en device. Implementar funciones de eventos
+        {    
+            #if fpga_performance == 1
+                    auto start = high_resolution_clock::now();
+            #endif      
+            if (layer > 1)
             {
-                // aux = _pipe_le_event();
-                // fpga_info("write of layer "<<layer<<" awaits le "<<aux);
                 err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 1, &line_events[ _pipe_le_event()], NULL);
 
             }else{
                 err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
             }
             checkError(err, "Failed to enqueue inputs");
-            
-            // aux = _le_event();
-            // fpga_info("write of layer "<<layer<<" activates le "<<aux);
             err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
             checkError(err, "Failed to enqueue inputs");
+            clFlush(wr_queue);
+            #if fpga_performance == 1
+                auto end = high_resolution_clock::now();
+                auto duration = duration_cast<microseconds>(end - start);
+                write_bp_perf += duration.count();
+                start = high_resolution_clock::now();
+            #endif
 
             params_h_dir += params2enq/sizeof(long int);
-            bias_h_dir += bias2enq/sizeof(long int);
+            bias_h_dir += bias2enq/sizeof(long int);            
 
-            clFlush(wr_queue);
-
-            clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);
-
-            // aux = _uce_event_ind();
-            // int aux2 = _le_event();
-            // fpga_info("solve of layer "<<layer<<" awaits us "<<aux);
-            // fpga_info("solve of layer "<<layer<<" activates le "<<aux2);
-            // err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[aux], &(line_events[aux2]));//  
-            // clFlush(exe_queue);
+            clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);            
             err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);//
+            clFlush(exe_queue);
             // _show_events(aux);
             checkError(err, "Failed to enqueue task");
+            #if fpga_performance == 1
+                end = high_resolution_clock::now();
+                duration = duration_cast<microseconds>(end - start);
+                enq_task_perf += duration.count();
+            #endif
 
             params_d_dir = (inout_side_sel^1) * params_bytes_sz / 2;
             bias_d_dir = (inout_side_sel^1) * bias_bytes_sz / 2;
@@ -189,7 +193,16 @@ namespace fpga
     {
         cl_int err;
         err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel * in_out_bytes_sz, outs.size() * sizeof(long int), outs.data(), 0, NULL, NULL);
+        // _show_events();
         checkError(err, "Failed to enqueue read");
+        #if fpga_performance == 1
+            fpga_info("wr ins performance "<<write_ins_perf<<"us");
+            fpga_info("wr bias and params performance "<<write_bp_perf<<"us");
+            fpga_info("enq task performance "<<enq_task_perf<<"us");
+            write_ins_perf=0;
+            write_bp_perf=0;
+            enq_task_perf=0;
+        #endif
 
         kernel_busy = false;
     }
@@ -232,16 +245,16 @@ namespace fpga
         le_ind = 0;
         lib_le_index = 0;
 
-        for (int i = 0; i < MAX_EVENTS; i++)
+        for (int i = 0; i < uce_ind; i++)
         {
             clReleaseEvent(user_callback_events[i]);
-            clReleaseEvent(line_events[i]);
+            // clReleaseEvent(line_events[i]);
             user_callback_events[i] = clCreateUserEvent(context, &err);
             checkError(err, "Failed event");
             // clSetUserEventStatus(user_callback_events[i], CL_COMPLETE);
             // checkError(err, "Failed event");
         }
-        line_events = vector<cl_event>(MAX_EVENTS);
+        // line_events = vector<cl_event>(MAX_EVENTS);
     }
 
     int kernel_core::_uce_event()
@@ -266,7 +279,6 @@ namespace fpga
 
     int kernel_core::_le_event()
     {
-
         le_ind = lib_le_index;
         lib_le_index++;
         if (lib_le_index >= MAX_EVENTS)
