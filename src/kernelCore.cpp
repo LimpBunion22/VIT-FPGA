@@ -110,7 +110,7 @@ namespace fpga
 
         cl_int err;
         
-        // Configuration = {n_ins/N_NEURONS, ins_dir(/N_NEURONS/sizeof(long int)), n_outs/N_NEURONS, outs_dir/N_NEURONS/sizeof(long int), params_dir/N_NEURONS, bias_dir/N_NEURONS}
+        // Configuration = {n_ins/N_INS, ins_dir(/SZ_PCK/sizeof(long int)), n_outs/N_NEURONS, outs_dir(/SZ_PCK/sizeof(long int)), params_dir(/SZ_PCK/sizeof(long int)), bias_dir(/SZ_PCK/sizeof(long int))}
         configuration[0] = fpga_data2enq.n_ins >> 4;
         configuration[1] = (inout_side_sel * in_out_bytes_sz) >> 7;
         configuration[2] = fpga_data2enq.n_p_l[layer] >> 4;
@@ -128,13 +128,14 @@ namespace fpga
             {
                 cout1(BOLDWHITE,"LOAD_PARAMS ","true")
                 err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
-                checkError(err, "Failed to enqueue inputs");
+                checkError(err, "Failed to enqueue params");
+
                 err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
-                checkError(err, "Failed to enqueue inputs");
+                checkError(err, "Failed to enqueue bias");
                 clFlush(wr_queue);
 
-                params_h_dir += params2enq;
-                bias_h_dir += bias2enq;
+                params_h_dir += params2enq/sizeof(long int);
+                bias_h_dir += bias2enq/sizeof(long int); 
             }
 
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);

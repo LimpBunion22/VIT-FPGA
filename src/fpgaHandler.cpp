@@ -75,7 +75,7 @@ int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<long int> &inputs, 
                 net_list[cnt].inputs = inputs;
                 net_list[cnt].reload = reload;
                 net_list[cnt].enqueued = true;
-                net_list[cnt].big_net = big_nets || in_net.n_ins*sizeof(long int)>INOUT_SIZE/2 || in_net.n_params*sizeof(long int)>PARAMS_SIZE || in_net.n_neurons>BIAS_SIZE;
+                net_list[cnt].big_net = big_nets || in_net.n_ins*sizeof(long int)>(INOUT_SIZE/2/N_CORES) || in_net.n_params*sizeof(long int)>PARAMS_SIZE/N_CORES || in_net.n_neurons>BIAS_SIZE/N_CORES;
             }
             cnt++;
             if(cnt==MAX_SZ_ENQUEUE && aux_bool)
@@ -140,10 +140,12 @@ void fpga_handler::solve_nets()
                     #endif
                     cores[c].kernel_busy = false;
                     net_list[ind].solved = true;
-                    if(net_list[ind].big_net)
+                    if(net_list[ind].big_net){
                         cores[c].switch_mem_mode(MEM_MODE_BY_LOTS);
-                    else
+                    }
+                    else{
                         cores[c].switch_mem_mode(MEM_MODE_FULL);
+                    }
                     solve_nets_cnt++;
                 }else{
                     cores[c].enq_layer(net_list[ind].net,net_list[ind].layer,net_list[ind].reload);
