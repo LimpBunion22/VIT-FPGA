@@ -59,7 +59,8 @@ void fpga_handler::activate_handler()
 }
 
 int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<FPGA_DATA_TYPE> &inputs, bool reload, bool big_nets)
-{
+{   
+    cout3(BOLDCYAN, "enqueue_net", "")
     int cnt = 0;
     if(nets_enqueued>=MAX_SZ_ENQUEUE){
         fpga_error("Enqueues overflow");
@@ -83,6 +84,7 @@ int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<FPGA_DATA_TYPE> &in
                 fpga_error("Enqueues counter overflow");
         }
     }
+    cout3(BOLDCYAN, "end_enqueue_net", "")
     return cnt;
 }
 

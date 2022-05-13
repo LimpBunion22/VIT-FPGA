@@ -76,7 +76,7 @@ TARGET := libnetFPGA.a
 TARGET_DIR := ${HOME}/workspace_development/lib
 
 # Directories
-INC_DIRS := ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/inc ./include ./def
+INC_DIRS := ${HOME}/intelFPGA_pro/18.1/hld/examples_aoc/common/inc ./include ./def ${HOME}/workspace_development/include
 LIB_DIRS := 
 
 # Files

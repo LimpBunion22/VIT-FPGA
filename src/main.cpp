@@ -17,21 +17,24 @@ int main(){
     fpga::fpga_handler the_handler;
     the_handler.activate_handler();
 
-    for(size_t n=1;n<11;n++){
+    for(int n=1;n<11;n++){
     cout << "N: " <<n<<"\n";
     int n_nets = 4;
 
-    size_t n_ins = 16;
-    size_t base = 160;
-    std::vector<size_t> n_p_l = {n*base,n*base,n*base,n*base,n*base};
+    int n_ins = 16;
+    int base = 160;
+    std::vector<int> n_p_l = {n*base,n*base,n*base,n*base,n*base};
     std::vector<int> activation_type = {net::RELU2,net::RELU2,net::RELU2,net::RELU2,net::RELU2};
     
     std::vector<fpga::net_fpga> nets;
     nets.reserve(n_nets);
-    for(int i=0;i<n_nets;i++)
-        nets.emplace_back(n_ins, n_p_l, activation_type, the_handler);
+    for(int i=0;i<n_nets;i++){
+        nets.emplace_back(the_handler);
+        nets[i].build_net_from_data(n_ins, n_p_l, activation_type);
+    }
 
-    fpga::net_fpga my_net(n_ins, n_p_l, activation_type, the_handler);
+    fpga::net_fpga my_net(the_handler);
+    my_net.build_net_from_data(n_ins, n_p_l, activation_type);
 
     std::vector<float> inputs = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f,1.0f, 0.0f, 0.0f, 0.0f, 0.0f,1.0f, 0.0f, 0.0f, 0.0f, 0.0f,0.0f};
     // auto outputs = my_net.launch_forward(inputs);
