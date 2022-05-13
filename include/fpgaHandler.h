@@ -35,9 +35,9 @@ class fpga_handler{
 
         void activate_handler();
 
-        int enqueue_net(fpga_data & in_net, std::vector<long int> &inputs, bool reload = true, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
+        int enqueue_net(fpga_data & in_net, std::vector<FPGA_DATA_TYPE> &inputs, bool reload = true, bool big_nets = false); //Gestion de eventos para hacerlo no bloqueante
         void solve_nets();
-        std::vector<long int> read_net(int identifier);//Bloqueante
+        std::vector<FPGA_DATA_TYPE> read_net(int identifier);//Bloqueante
 
         void _cleanup();
 

@@ -40,9 +40,9 @@ namespace fpga
         int n_neurons;
         int n_params;
 
-        std::vector <long int> params;
+        std::vector <FPGA_DATA_TYPE> params;
         int activations;
-        std::vector <long int> bias;
+        std::vector <FPGA_DATA_TYPE> bias;
 
         int n_sets;
         bool gradient_init;

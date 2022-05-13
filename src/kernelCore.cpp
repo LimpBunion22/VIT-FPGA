@@ -23,6 +23,7 @@ namespace fpga
     {
         cl_int err;
         mycontext = context;
+        mydevice = device;
         wr_queue = clCreateCommandQueue(context, device, 0, &err);
         checkError(err, "Failed to create write queue");
         exe_queue = clCreateCommandQueue(context, device, 0, &err);
@@ -79,17 +80,25 @@ namespace fpga
         }
     }
 
-    void kernel_core::enq_inputs(vector<long int> &inputs, cl_context &context)
+    void kernel_core::enq_inputs(vector<FPGA_DATA_TYPE> &inputs, cl_context &context)
     {
         cl_int err;
         _reset_events(context);
+        clReleaseCommandQueue(wr_queue);
+        clReleaseCommandQueue(exe_queue);
+        wr_queue = clCreateCommandQueue(context, mydevice, 0, &err);
+        checkError(err, "Failed to create write queue");
+        exe_queue = clCreateCommandQueue(context, mydevice, 0, &err);
+        checkError(err, "Failed to create exe queue");
+
 #if fpga_performance == 1
         auto start = high_resolution_clock::now();
 #endif
 
-        err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, inout_side_sel * in_out_bytes_sz, inputs.size() * sizeof(long int), inputs.data(), 0, NULL, &line_events[_le_event()]);
+        err = clEnqueueWriteBuffer(wr_queue, in_out_dev, CL_FALSE, inout_side_sel * in_out_bytes_sz, inputs.size() * sizeof(FPGA_DATA_TYPE), inputs.data(), 0, NULL, &line_events[_le_event()]);
         checkError(err, "Failed to enqueue inputs");
-        clFlush(wr_queue);
+        err = clFlush(wr_queue);
+        checkError(err, "Failed to flush writes");
 #if fpga_performance == 1
         auto end = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(end - start);
@@ -110,16 +119,16 @@ namespace fpga
 
         cl_int err;
         
-        // Configuration = {n_ins/N_INS, ins_dir(/SZ_PCK/sizeof(long int)), n_outs/N_NEURONS, outs_dir(/SZ_PCK/sizeof(long int)), params_dir(/SZ_PCK/sizeof(long int)), bias_dir(/SZ_PCK/sizeof(long int))}
+        // Configuration = {n_ins/N_INS, ins_dir(/SZ_PCK/sizeof(FPGA_DATA_TYPE)), n_outs/N_NEURONS, outs_dir(/SZ_PCK/sizeof(FPGA_DATA_TYPE)), params_dir(/SZ_PCK/sizeof(FPGA_DATA_TYPE)), bias_dir(/SZ_PCK/sizeof(FPGA_DATA_TYPE))}
         configuration[0] = fpga_data2enq.n_ins >> 4;
-        configuration[1] = (inout_side_sel * in_out_bytes_sz) >> 7;
+        configuration[1] = (inout_side_sel * in_out_bytes_sz) >> (4+sizeof(FPGA_DATA_TYPE));
         configuration[2] = fpga_data2enq.n_p_l[layer] >> 4;
-        configuration[3] = ((inout_side_sel ^ 1) * in_out_bytes_sz) >> 7;
-        configuration[4] = params_d_dir >> 7;
-        configuration[5] = bias_d_dir >> 7;
+        configuration[3] = ((inout_side_sel ^ 1) * in_out_bytes_sz) >> (4+sizeof(FPGA_DATA_TYPE));
+        configuration[4] = params_d_dir >> (4+sizeof(FPGA_DATA_TYPE));
+        configuration[5] = bias_d_dir >> (4+sizeof(FPGA_DATA_TYPE));
 
-        int params2enq = (layer == 0 ? fpga_data2enq.n_ins * fpga_data2enq.n_p_l[layer] : fpga_data2enq.n_p_l[layer - 1] * fpga_data2enq.n_p_l[layer]) * sizeof(long int);
-        int bias2enq = fpga_data2enq.n_p_l[layer] * sizeof(long int);           
+        int params2enq = (layer == 0 ? fpga_data2enq.n_ins * fpga_data2enq.n_p_l[layer] : fpga_data2enq.n_p_l[layer - 1] * fpga_data2enq.n_p_l[layer]) * sizeof(FPGA_DATA_TYPE);
+        int bias2enq = fpga_data2enq.n_p_l[layer] * sizeof(FPGA_DATA_TYPE);           
 
         if (memory_mode == MEM_MODE_FULL)
         {
@@ -132,16 +141,18 @@ namespace fpga
 
                 err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
                 checkError(err, "Failed to enqueue bias");
-                clFlush(wr_queue);
+                err = clFlush(wr_queue);
+                checkError(err, "Failed to flush writes");
 
-                params_h_dir += params2enq/sizeof(long int);
-                bias_h_dir += bias2enq/sizeof(long int); 
+                params_h_dir += params2enq/sizeof(FPGA_DATA_TYPE);
+                bias_h_dir += bias2enq/sizeof(FPGA_DATA_TYPE); 
             }
 
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);
             err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);
             checkError(err, "Failed to enqueue task");
-            clFlush(exe_queue);
+            err = clFlush(exe_queue);
+            checkError(err, "Failed to flush task");
 
             params_d_dir += params2enq;
             bias_d_dir += bias2enq;
@@ -158,10 +169,10 @@ namespace fpga
             }else{
                 err = clEnqueueWriteBuffer(wr_queue, params_dev, CL_FALSE, params_d_dir, params2enq, &fpga_data2enq.params[params_h_dir], 0, NULL, NULL);
             }
-            checkError(err, "Failed to enqueue inputs");
             err = clEnqueueWriteBuffer(wr_queue, bias_dev, CL_FALSE, bias_d_dir, bias2enq, &fpga_data2enq.bias[bias_h_dir], 0, NULL, &line_events[_le_event()]);
-            checkError(err, "Failed to enqueue inputs");
-            clFlush(wr_queue);
+            checkError(err, "Failed to enqueue bias");
+            err = clFlush(wr_queue);
+            checkError(err, "Failed to flush writes");
             #if fpga_performance == 1
                 auto end = high_resolution_clock::now();
                 auto duration = duration_cast<microseconds>(end - start);
@@ -169,14 +180,15 @@ namespace fpga
                 start = high_resolution_clock::now();
             #endif
 
-            params_h_dir += params2enq/sizeof(long int);
-            bias_h_dir += bias2enq/sizeof(long int);            
+            params_h_dir += params2enq/sizeof(FPGA_DATA_TYPE);
+            bias_h_dir += bias2enq/sizeof(FPGA_DATA_TYPE);            
 
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);            
             err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);//
-            clFlush(exe_queue);
-            // _show_events(aux);
             checkError(err, "Failed to enqueue task");
+            err = clFlush(exe_queue);
+            checkError(err, "Failed to flush task");
+            // _show_events(aux);
             #if fpga_performance == 1
                 end = high_resolution_clock::now();
                 duration = duration_cast<microseconds>(end - start);
@@ -190,16 +202,17 @@ namespace fpga
         inout_side_sel ^= 1;
     }
 
-    void kernel_core::enq_read(std::vector<long int> &outs)
+    void kernel_core::enq_read(std::vector<FPGA_DATA_TYPE> &outs)
     {
         cl_int err;
-        err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel * in_out_bytes_sz, outs.size() * sizeof(long int), outs.data(), 0, NULL, NULL);
+        err = clEnqueueReadBuffer(exe_queue, in_out_dev, CL_TRUE, inout_side_sel * in_out_bytes_sz, outs.size() * sizeof(FPGA_DATA_TYPE), outs.data(), 0, NULL, NULL);
         // _show_events();
         checkError(err, "Failed to enqueue read");
         #if fpga_performance == 1
-            fpga_info("wr ins performance "<<write_ins_perf<<"us");
-            fpga_info("wr bias and params performance "<<write_bp_perf<<"us");
-            fpga_info("enq task performance "<<enq_task_perf<<"us");
+            fpga_info("             CORE INFO PERFORMANCE");
+            fpga_info("                 wr ins "<<write_ins_perf<<"us");
+            fpga_info("                 wr bias and params "<<write_bp_perf<<"us");
+            fpga_info("                 enq task "<<enq_task_perf<<"us");
             write_ins_perf=0;
             write_bp_perf=0;
             enq_task_perf=0;

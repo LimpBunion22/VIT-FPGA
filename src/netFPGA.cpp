@@ -51,9 +51,9 @@ namespace fpga
                 n_params += nnrs * this->n_p_l[i - 1];
         }
 
-        params = vector<long int>(n_params,0);
+        params = vector<FPGA_DATA_TYPE>(n_params,0);
         activations = 1; // 1 -> RELU2
-        bias = vector<long int>(n_neurons,0);
+        bias = vector<FPGA_DATA_TYPE>(n_neurons,0);
 
         int params_cnt = 0;
         int bias_cnt = 0;
@@ -105,9 +105,9 @@ namespace fpga
                 n_params += n_p_l[i] * n_p_l[i - 1];
         }
 
-        params = vector<long int>(n_params,0);
+        params = vector<FPGA_DATA_TYPE>(n_params,0);
         activations = 1; // 1 -> RELU2
-        bias = vector<long int>(n_neurons,0);
+        bias = vector<FPGA_DATA_TYPE>(n_neurons,0);
         int param_cnt = 0;
         int neuron_cnt = 0;
         for (int i = 0; i < n_layers; i++)
@@ -119,11 +119,11 @@ namespace fpga
                 for (int k = 0; k < n_per_n; k++)
                 {
                     if (j < data.n_p_l[i] && k < o_n_per_n)
-                        params[param_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(long int)(DECIMAL_FACTOR * data.params[i][j * o_n_per_n + k]);
+                        params[param_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(FPGA_DATA_TYPE)(DECIMAL_FACTOR * data.params[i][j * o_n_per_n + k]);
                     param_cnt++;
                 }
                 if (j < data.n_p_l[i])
-                    bias[neuron_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(long int)(DECIMAL_FACTOR * DECIMAL_FACTOR * data.bias[i][j]);
+                    bias[neuron_cnt] = random == true ? (rand()%4 * DECIMAL_FACTOR - DECIMAL_FACTOR) :(FPGA_DATA_TYPE)(DECIMAL_FACTOR * DECIMAL_FACTOR * data.bias[i][j]);
                 neuron_cnt++;
             }
         }
@@ -257,9 +257,9 @@ namespace fpga
         auto start = high_resolution_clock::now();
 #endif
         // cout << BLUE << "   NET_FPGA: Launching forward" << RESET << "\n";
-        vector<long int> int_inputs(n_ins, 0);
+        vector<FPGA_DATA_TYPE> int_inputs(n_ins, 0);
         for (int i = 0; i < inputs.size(); i++)
-            int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
+            int_inputs[i] = (FPGA_DATA_TYPE)(inputs[i] * DECIMAL_FACTOR);
 
         cout3(BLUE, "   NET_FPGA: Enqueuing net", "");
         identifier = master.enqueue_net(my_data, int_inputs);
@@ -276,7 +276,7 @@ namespace fpga
         cout3(BLUE, "   NET_FPGA: Net solved", "");
 
         cout3(BLUE, "   NET_FPGA: Reading net", "");
-        vector<long int> int_out = master.read_net(identifier);
+        vector<FPGA_DATA_TYPE> int_out = master.read_net(identifier);
         cout3(BLUE, "   NET_FPGA: Net readed", "");
 
 #if fpga_performance == 1
@@ -300,9 +300,9 @@ namespace fpga
 
     void net_fpga::enqueue_net(const vector<float> &inputs, bool reload, bool same_in, bool big_nets)
     {
-        vector<long int> int_inputs(n_ins, 0);
+        vector<FPGA_DATA_TYPE> int_inputs(n_ins, 0);
         for (int i = 0; i < inputs.size(); i++)
-            int_inputs[i] = (long int)(inputs[i] * DECIMAL_FACTOR);
+            int_inputs[i] = (FPGA_DATA_TYPE)(inputs[i] * DECIMAL_FACTOR);
 
         identifier = master.enqueue_net(my_data, int_inputs,reload,big_nets);
         if (identifier == 0)
@@ -324,7 +324,7 @@ namespace fpga
 
     vector<float> net_fpga::read_net()
     {
-        vector<long int> int_out = master.read_net(identifier);
+        vector<FPGA_DATA_TYPE> int_out = master.read_net(identifier);
         vector<float> vec_out(n_outs, 0);
         for (int i = 0; i < n_outs; i++)
             vec_out[i] = float(int_out[i]) / DECIMAL_FACTOR;

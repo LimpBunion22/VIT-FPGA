@@ -23,6 +23,8 @@
 
 namespace fpga{
 
+    #define FPGA_DATA_TYPE int
+
     #define fpga_info(text) cout << BOLDWHITE << "INFO: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
     #define fpga_warning(text) cout << BOLDYELLOW << "WARNING: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
     #define fpga_error(text) cout << BOLDRED << "ERROR: " << text << "  [file: " << __FILE__ << ", line: " << __LINE__ << "]" << RESET << "\n"
@@ -34,14 +36,15 @@ namespace fpga{
     
     #define N_INS 16
     #define N_NEURONS 16
-    #define DECIMAL_FACTOR 1024
+    #define DECIMAL_POWER 7
+    #define DECIMAL_FACTOR 128
     #define MAX_EVENTS 64
     #define MAX_SZ_ENQUEUE 256
 
     //Buffers size
-    #define INOUT_SIZE (2 * 16 * 1024 * 8 / N_CORES)
-    #define PARAMS_SIZE (16UL * 1024 * 16 * 1024 * 8 / N_CORES)
-    #define BIAS_SIZE (2 * 16 * 1024 * 8 / N_CORES)
+    #define INOUT_SIZE (2 * 16 * 1024 * 8 / N_CORES * 2)
+    #define PARAMS_SIZE (16UL * 1024 * 16 * 1024 * 8 / N_CORES * 2)
+    #define BIAS_SIZE (2 * 16 * 1024 * 8 / N_CORES * 2)
 
     //Modos de memoria de los buffers
     #define MEM_MODE_BY_LOTS 0
@@ -54,8 +57,8 @@ namespace fpga{
         int n_params;
         int n_neurons;
         int* n_p_l;
-        long int* params;
-        long int* bias;
+        FPGA_DATA_TYPE* params;
+        FPGA_DATA_TYPE* bias;
         // std::vector<int> activation_type; //* valor numérico que indica qué función usar por capa
     } fpga_data;
 
@@ -74,8 +77,8 @@ namespace fpga{
 
         int layer = 0;
 
-        std::vector<long int> inputs;
-        std::vector<long int> outs;
+        std::vector<FPGA_DATA_TYPE> inputs;
+        std::vector<FPGA_DATA_TYPE> outs;
 
     }net_register;
 }

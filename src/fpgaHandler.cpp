@@ -58,7 +58,7 @@ void fpga_handler::activate_handler()
         _init_program();
 }
 
-int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<long int> &inputs, bool reload, bool big_nets)
+int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<FPGA_DATA_TYPE> &inputs, bool reload, bool big_nets)
 {
     int cnt = 0;
     if(nets_enqueued>=MAX_SZ_ENQUEUE){
@@ -75,7 +75,8 @@ int fpga_handler::enqueue_net(fpga_data &in_net, std::vector<long int> &inputs, 
                 net_list[cnt].inputs = inputs;
                 net_list[cnt].reload = reload;
                 net_list[cnt].enqueued = true;
-                net_list[cnt].big_net = big_nets || in_net.n_ins*sizeof(long int)>(INOUT_SIZE/2/N_CORES) || in_net.n_params*sizeof(long int)>PARAMS_SIZE/N_CORES || in_net.n_neurons>BIAS_SIZE/N_CORES;
+                net_list[cnt].big_net = big_nets || in_net.n_ins*sizeof(FPGA_DATA_TYPE)>(INOUT_SIZE/2/N_CORES) || in_net.n_params*sizeof(FPGA_DATA_TYPE)>PARAMS_SIZE/N_CORES || in_net.n_neurons>BIAS_SIZE/N_CORES;
+                
             }
             cnt++;
             if(cnt==MAX_SZ_ENQUEUE && aux_bool)
@@ -97,7 +98,7 @@ void fpga_handler::solve_nets()
     int read_time = 0;
     int enq_layer_time = 0;
 #endif
-
+    
     while(solv_bool){
 #if fpga_performance == 1
         auto start = high_resolution_clock::now();
@@ -109,7 +110,7 @@ void fpga_handler::solve_nets()
 
                     cores[c].enq_inputs(net_list[enq_nets_cnt].inputs, context);
                     net_list[enq_nets_cnt].loaded = true;
-                    net_list[enq_nets_cnt].outs = vector<long int>(net_list[enq_nets_cnt].net.n_p_l[net_list[enq_nets_cnt].net.n_layers-1],0);
+                    net_list[enq_nets_cnt].outs = vector<FPGA_DATA_TYPE>(net_list[enq_nets_cnt].net.n_p_l[net_list[enq_nets_cnt].net.n_layers-1],0);
                     enq_nets_cnt++;
                     if(enq_nets_cnt>=nets_enqueued)
                         goto PROCESS;                
@@ -131,7 +132,7 @@ void fpga_handler::solve_nets()
                 #if fpga_performance == 1
                     auto start2 = high_resolution_clock::now();
                 #endif
-                if(net_list[ind].layer == net_list[ind].net.n_layers){
+                if(net_list[ind].layer >= net_list[ind].net.n_layers){
                     cores[c].enq_read(net_list[ind].outs);
                     #if fpga_performance == 1
                             auto end2 = high_resolution_clock::now();
@@ -168,14 +169,17 @@ void fpga_handler::solve_nets()
             solv_bool = false;
     }
 #if fpga_performance == 1
-    fpga_info("enq ins performance "<<enq_time<<"us");
-    fpga_info("solve total performance "<<solve_time<<"us");
-    fpga_info("solve read performance "<<read_time<<"us");
-    fpga_info("solve layer performance "<<enq_layer_time<<"us");
+    fpga_warning("---------------------------------------------------");
+    fpga_warning("solve_nets performance "<<enq_time+solve_time<<"us");
+    fpga_info("     -enq ins: "<<enq_time<<"us");
+    fpga_info("     -solve "<<solve_time<<"us");
+    fpga_info("         --read "<<read_time<<"us");
+    fpga_info("         --layers "<<enq_layer_time<<"us");
+    fpga_warning("---------------------------------------------------");
 #endif
 }
 
-std::vector<long int> fpga_handler::read_net(int identifier)
+std::vector<FPGA_DATA_TYPE> fpga_handler::read_net(int identifier)
 {
     int id = identifier-1;
     net_list[id].free_slot = true;
