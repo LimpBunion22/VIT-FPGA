@@ -1,7 +1,7 @@
 #ifndef FPGA_DEFINES_H
 #define FPGA_DEFINES_H
 
-#define fpga_performance 1
+#define fpga_performance 0
 #define fpga_verbose 0
 #if fpga_verbose == 0
     #define cout1(color, text, index)
