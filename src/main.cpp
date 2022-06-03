@@ -19,11 +19,12 @@ int main(){
 
     for(int n=1;n<11;n++){
     cout << "N: " <<n<<"\n";
-    int n_nets = 4;
+    int n_nets = 8;
 
     int n_ins = 16;
     int base = 160;
-    std::vector<int> n_p_l = {n*base,n*base,n*base,n*base,n*base};
+    // std::vector<int> n_p_l = {n*base,n*base,n*base,n*base,n*base};
+    std::vector<int> n_p_l = {10*base,10*base,10*base,10*base,10*base};
     std::vector<int> activation_type = {net::RELU2,net::RELU2,net::RELU2,net::RELU2,net::RELU2};
     
     std::vector<fpga::net_fpga> nets;
@@ -39,7 +40,7 @@ int main(){
     std::vector<float> inputs = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f,1.0f, 0.0f, 0.0f, 0.0f, 0.0f,1.0f, 0.0f, 0.0f, 0.0f, 0.0f,0.0f};
     // auto outputs = my_net.launch_forward(inputs);
 
-    int iterations = 500;
+    int iterations = 10;
     std::cout << "PRECARGA \n";
     for(int i=0;i<n_nets; i++)
         nets[i].enqueue_net(inputs,true,false,false);

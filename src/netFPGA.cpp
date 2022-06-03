@@ -84,7 +84,7 @@ namespace fpga
     }
 
 
-    void net_fpga::build_net_from_data(int input_size, const std::vector<int> n_p_l, const std::vector<int> activations)
+    void net_fpga::build_net_from_data(int input_size, const std::vector<int> &n_p_l, const std::vector<int> &activations)
     {
         n_layers = n_p_l.size();
         n_ins = input_size % N_INS == 0 ? input_size : input_size + (N_INS - input_size % N_INS);
@@ -280,12 +280,12 @@ namespace fpga
 
         cout3(BLUE, "   NET_FPGA: Reading net", "");
         vector<FPGA_DATA_TYPE> int_out = master.read_net(identifier);
-        cout3(BLUE, "   NET_FPGA: Net readed", "");
+        cout3(BLUE, "   NET_FPGA: Net read", "");
 
 #if fpga_performance == 1
         auto end = high_resolution_clock::now();
         auto duration = duration_cast<microseconds>(end - start);
-        fpga_info("forward performance"<<duration.count()<<"ms");
+        fpga_info("forward performance"<<duration.count()<<"us");
         // forward_performance = duration.count();
 #endif
         #if fpga_verbose>=1

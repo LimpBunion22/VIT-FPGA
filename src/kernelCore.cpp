@@ -133,6 +133,9 @@ namespace fpga
         if (memory_mode == MEM_MODE_FULL)
         {
             cout1(BOLDWHITE,"MEM_MODE ","MEM_MODE_FULL")
+            #if fpga_performance == 1
+                    auto start = high_resolution_clock::now();
+            #endif 
             if (load_params == true)
             {
                 cout1(BOLDWHITE,"LOAD_PARAMS ","true")
@@ -151,8 +154,19 @@ namespace fpga
             clSetEventCallback(line_events[le_ind], CL_COMPLETE, &enq_callback_func, (void *)this);
             err = clEnqueueTask(exe_queue, kernel, 1, &user_callback_events[_uce_event_ind()], &line_events[_le_event()]);
             checkError(err, "Failed to enqueue task");
+            #if fpga_performance == 1
+                auto end = high_resolution_clock::now();
+                auto duration = duration_cast<microseconds>(end - start);
+                write_bp_perf += duration.count();
+                start = high_resolution_clock::now();
+            #endif
             err = clFlush(exe_queue);
             checkError(err, "Failed to flush task");
+            #if fpga_performance == 1
+                end = high_resolution_clock::now();
+                duration = duration_cast<microseconds>(end - start);
+                enq_task_perf += duration.count();
+            #endif
 
             params_d_dir += params2enq;
             bias_d_dir += bias2enq;

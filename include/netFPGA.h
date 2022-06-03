@@ -65,7 +65,7 @@ namespace fpga
         void build_fully_layer(int layer_size, int activation = net::RELU2) override;
         void build_net() override;
         void build_net_from_file(const net::layout &layout) override;
-        void build_net_from_data(int input_size, const std::vector<int> n_p_l, const std::vector<int> activations) override;
+        void build_net_from_data(int input_size, const std::vector<int> &n_p_l, const std::vector<int> &activations) override;
 
         void set_fpga_handler(fpga_handler &handler);
 
